@@ -68,7 +68,6 @@
 
 <div id="toastWrap"></div>
 
-<script src="js/app.js"></script>
 <script>
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(e=>console.log('SW fail',e))}
 </script>
@@ -76,8 +75,19 @@ if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catc
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
 <script>
+const firebaseConfig = {
+ apiKey: "AIzaSyCTnfNHTtuUIaAyrEhTtiWuwwy4ZhSM4xg",
+authDomain: "figuraprocat5-0.firebaseapp.com",
+ databaseURL: "https://figuraprocat5-0-default-rtdb.europe-west1.firebasedatabase.app",
+ projectId: "figuraprocat5-0",
+ storageBucket: "figuraprocat5-0.firebasestorage.app",
+ messagingSenderId: "288034736153",
+ appId: "1:288034736153:web:92b9491aa1266f47464288",
+ measurementId: "G-RQCKB8HGDB"
+};
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 </script>
+  <script src="js/app.js"></script>
 </body>
 </html>
