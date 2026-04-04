@@ -21,16 +21,22 @@ const diffD=(a,b)=>Math.round((new Date(b)-new Date(a))/864e5);
 const MO=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 const CATS=["Детский","Юниорский","Взрослый"];
 const DEF_SIZES="98-104,110-116,122-128,134-140,146-152,158-164,XS (42),S (44),M (46),L (48),XL (50),XXL (52)".split(",");
-let customSizes=JSON.parse(localStorage.getItem("fp_sizes"))||[...DEF_SIZES];
+
+let customSizes=[...DEF_SIZES]; // 🔥 Загрузится из Firebase при init
 function getSizes(){return customSizes}
-function saveSizes(){localStorage.setItem("fp_sizes",JSON.stringify(customSizes))}
+
+// 🔥 FIREBASE: Сохранить размеры
+function saveSizes(){
+  db.collection('fp_settings').doc('sizes').set({list:customSizes}).catch(e=>console.error("Sizes save err:",e));
+}
+
 const MATS=["Лайкра","Бифлекс","Стрейч","Велюр","Сетка","Комбинированный","Бархат","Микрофибра"];
 const DECS=["Стразы Swarovski","Термостразы","Перья","Вышивка","Паетки","Бисер","Без декора"];
 const STYS=["Классика","Лирика","Характерный","Народный","Произвольная","Джаз","Танцы на льду"];
 const ST={available:{l:"Свободно",c:"sa",d:"#10b981",rc:"rib-av",i:"✅"},booked:{l:"Забронировано",c:"sb2",d:"#f59e0b",rc:"rib-bk",i:"🕐"},rented:{l:"В прокате",c:"sr",d:"#f43f5e",rc:"rib-rn",i:"🚫"},returned:{l:"Возвращено",c:"srt",d:"#3b82f6",rc:"rib-rt",i:"🔄"}};
 
-// ── STATE ──
-let dresses=JSON.parse(localStorage.getItem("fp_dresses")||"null")||[
+// ── DEFAULT DATA (для первого запуска) ──
+const DEFAULT_DRESSES=[
   {id:"c1",name:"Снежинка",category:"Детский",size:"122-128",material:"Лайкра",decoration:"Термостразы",style:"Лирика",price:12000,deposit:20000,description:"Нежное белоснежное платье с серебристыми кристаллами.",photos:[],rating:5,rentCount:18},
   {id:"c2",name:"Огонь льда",category:"Юниорский",size:"146-152",material:"Бифлекс",decoration:"Стразы Swarovski",style:"Характерный",price:18000,deposit:35000,description:"Ярко-красный костюм с золотыми стразами.",photos:[],rating:5,rentCount:12},
   {id:"c3",name:"Лебединое озеро",category:"Взрослый",size:"S (44)",material:"Комбинированный",decoration:"Перья",style:"Классика",price:35000,deposit:60000,description:"Классический белый костюм с перьями.",photos:[],rating:5,rentCount:9},
@@ -40,17 +46,74 @@ let dresses=JSON.parse(localStorage.getItem("fp_dresses")||"null")||[
   {id:"c7",name:"Ледяная королева",category:"Юниорский",size:"158-164",material:"Комбинированный",decoration:"Стразы Swarovski",style:"Произвольная",price:22000,deposit:40000,description:"Голубой костюм с серебристыми стразами.",photos:[],rating:5,rentCount:11},
   {id:"c8",name:"Джаз на льду",category:"Взрослый",size:"XS (42)",material:"Лайкра",decoration:"Паетки",style:"Джаз",price:24000,deposit:42000,description:"Чёрный костюм с золотыми паетками.",photos:[],rating:4,rentCount:6}
 ];
-let rentals=JSON.parse(localStorage.getItem("fp_rentals")||"null")||[
+const DEFAULT_RENTALS=[
   {id:"r1",dressId:"c1",clientName:"Алина Захарова",clientPhone:"+7(701)123-45-67",startDate:addD(-5),endDate:addD(-1),status:"rented",notes:"Соревнования",totalPrice:48000},
   {id:"r2",dressId:"c2",clientName:"Диана Нурова",clientPhone:"+7(702)234-56-78",startDate:addD(0),endDate:addD(1),status:"rented",notes:"Чемпионат",totalPrice:36000},
   {id:"r3",dressId:"c3",clientName:"Карина Белова",clientPhone:"+7(705)345-67-89",startDate:addD(-15),endDate:addD(-12),status:"returned",notes:"",totalPrice:105000},
   {id:"r4",dressId:"c5",clientName:"Зоя Смирнова",clientPhone:"+7(707)456-78-90",startDate:addD(5),endDate:addD(9),status:"booked",notes:"День рождения",totalPrice:36000},
   {id:"r5",dressId:"c7",clientName:"Лина Касымова",clientPhone:"+7(708)567-89-01",startDate:addD(-1),endDate:addD(0),status:"rented",notes:"Турнир",totalPrice:44000}
 ];
+
+// ── STATE ──
+let dresses=[...DEFAULT_DRESSES];  // 🔥 Загрузится из Firebase
+let rentals=[...DEFAULT_RENTALS];  // 🔥 Загрузится из Firebase
 let curTab="catalog",calY=new Date().getFullYear(),calM=new Date().getMonth(),calSel=null;
 let renFil="all",editDress=null,editRental=null,detPhIdx=0,formPhotos=[],formStatus="booked";
 let clStatFil="all",dismissedN=new Set();
-const save=()=>{localStorage.setItem("fp_dresses",JSON.stringify(dresses));localStorage.setItem("fp_rentals",JSON.stringify(rentals))};
+
+// ═══════════════════════════════════════════
+// 🔥 FIREBASE: Функции сохранения / удаления
+// ═══════════════════════════════════════════
+function fbSaveDress(d){
+  db.collection('fp_dresses').doc(d.id).set(d).catch(e=>console.error("Dress save err:",e));
+}
+function fbDeleteDress(id){
+  db.collection('fp_dresses').doc(id).delete().catch(e=>console.error("Dress del err:",e));
+}
+function fbSaveRental(r){
+  db.collection('fp_rentals').doc(r.id).set(r).catch(e=>console.error("Rental save err:",e));
+}
+function fbDeleteRental(id){
+  db.collection('fp_rentals').doc(id).delete().catch(e=>console.error("Rental del err:",e));
+}
+
+// 🔥 FIREBASE: Загрузка данных при старте
+async function fbLoadAll(){
+  try{
+    // Загружаем платья
+    const dSnap=await db.collection('fp_dresses').get();
+    if(!dSnap.empty){
+      dresses=dSnap.docs.map(doc=>doc.data());
+    }else{
+      // Первый запуск — сохраняем демо-данные
+      DEFAULT_DRESSES.forEach(d=>fbSaveDress(d));
+      dresses=[...DEFAULT_DRESSES];
+    }
+
+    // Загружаем прокаты
+    const rSnap=await db.collection('fp_rentals').get();
+    if(!rSnap.empty){
+      rentals=rSnap.docs.map(doc=>doc.data());
+    }else{
+      DEFAULT_RENTALS.forEach(r=>fbSaveRental(r));
+      rentals=[...DEFAULT_RENTALS];
+    }
+
+    // Загружаем размеры
+    const sDoc=await db.collection('fp_settings').doc('sizes').get();
+    if(sDoc.exists){
+      customSizes=sDoc.data().list;
+    }else{
+      saveSizes(); // сохраняем дефолтные
+    }
+
+    console.log("✅ Firebase: загружено",dresses.length,"платьев,",rentals.length,"прокатов");
+  }catch(e){
+    console.error("❌ Firebase load error:",e);
+    showToast("Ошибка загрузки данных!","error");
+  }
+}
+
 const gDS=id=>{const r=rentals.find(r=>r.dressId===id&&r.status!=="returned");return r?r.status:"available"};
 const gAR=id=>rentals.find(r=>r.dressId===id&&r.status!=="returned");
 const gD=id=>dresses.find(d=>d.id===id);
@@ -146,7 +209,17 @@ function renderCat(){
     return`<div class="dc ${al||""}" onclick="openDetM('${d.id}')"><div class="dp2">${ph}<div class="sbadge ${cfg.c}"><div class="sdot"></div>${cfg.l}</div><div class="ca2" onclick="event.stopPropagation()"><button class="cab" onclick="openDressM('${d.id}')">✏️</button><button class="cab" onclick="delDress('${d.id}')">🗑️</button></div>${alB}</div><div class="di"><div class="dn">${d.name}</div><div class="dcat">${d.category} · ${d.style}</div><div class="dtags"><span class="tag">${d.size}</span><span class="tag">${d.material}</span></div><div class="df2"><div><div class="dpr">${fmt(d.price)}<span class="dprs">/сут</span></div><div class="ddep">Залог: ${fmt(d.deposit)}</div></div>${s==="available"?`<button class="rbtn" onclick="event.stopPropagation();openRenM(null,'${d.id}')">Сдать</button>`:""}</div>${ar?`<div class="dcl2">👤 <strong>${ar.clientName}</strong> до ${fmtD(ar.endDate)}</div>`:""}</div></div>`;
   }).join("");
 }
-function delDress(id){if(!confirm("Удалить?"))return;dresses=dresses.filter(d=>d.id!==id);rentals=rentals.filter(r=>r.dressId!==id);save();renderAll();showToast("Удалён","info")}
+
+// 🔥 FIREBASE: Удаление платья + связанных прокатов
+function delDress(id){
+  if(!confirm("Удалить?"))return;
+  const relRentals=rentals.filter(r=>r.dressId===id);
+  dresses=dresses.filter(d=>d.id!==id);
+  rentals=rentals.filter(r=>r.dressId!==id);
+  fbDeleteDress(id);
+  relRentals.forEach(r=>fbDeleteRental(r.id));
+  renderAll();showToast("Удалён","info");
+}
 
 // ── DRESS MODAL ──
 function openDressM(id){
@@ -166,12 +239,15 @@ function openDressM(id){
 }
 function rPhGrid(){const g=document.getElementById("phGrid");if(!g)return;g.innerHTML=formPhotos.map((p,i)=>`<div class="pth"><img src="${p}"><button class="prm" onclick="formPhotos.splice(${i},1);rPhGrid()">✕</button></div>`).join("")+`<button class="padd" onclick="document.getElementById('phInp').click()">📷<span>Фото</span></button>`}
 async function hPh(e){for(const f of[...e.target.files]){if(formPhotos.length>=8)break;formPhotos.push(await compImg(f))}rPhGrid();e.target.value=""}
+
+// 🔥 FIREBASE: Сохранение платья
 function subDress(){
   const name=document.getElementById("dName").value.trim(),price=parseInt(document.getElementById("dPrice").value);
   if(!name){showToast("Название!","error");return}if(!price){showToast("Цену!","error");return}
   const obj={name,category:document.getElementById("dCat").value,size:document.getElementById("dSize").value,material:document.getElementById("dMat").value,decoration:document.getElementById("dDec").value,style:document.getElementById("dStyle").value,price,deposit:parseInt(document.getElementById("dDep").value)||0,description:document.getElementById("dDesc").value.trim(),photos:[...formPhotos]};
-  if(editDress){Object.assign(editDress,obj);showToast("Обновлён!")}else{obj.id=gid();obj.rating=5;obj.rentCount=0;dresses.push(obj);showToast("Добавлен!")}
-  save();closeModal();renderAll();
+  if(editDress){Object.assign(editDress,obj);fbSaveDress(editDress);showToast("Обновлён!")}
+  else{obj.id=gid();obj.rating=5;obj.rentCount=0;dresses.push(obj);fbSaveDress(obj);showToast("Добавлен!")}
+  closeModal();renderAll();
 }
 
 // ── DETAIL MODAL ──
@@ -211,6 +287,8 @@ function checkOvl(){
   const conflicts=checkOverlap(did,s,e,editRental?editRental.id:null);
   if(conflicts.length){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Даты заняты!</strong><br>${conflicts.map(c=>`${c.clientName}: ${fmtD(c.startDate)} - ${fmtD(c.endDate)} (${ST[c.status].l})`).join("<br>")}</div>`;btn.disabled=true;btn.style.opacity=".5"}else{warn.innerHTML="";btn.disabled=false;btn.style.opacity="1"}
 }
+
+// 🔥 FIREBASE: Сохранение проката
 function subRen(){
   const did=document.getElementById("rDress").value,cl=document.getElementById("rClient").value.trim();
   if(!did){showToast("Выберите костюм!","error");return}if(!cl){showToast("Имя!","error");return}
@@ -218,8 +296,9 @@ function subRen(){
   if(checkOverlap(did,s,e,editRental?editRental.id:null).length){showToast("Даты заняты другим клиентом!","error");return}
   const tot=daysN(s,e)*(d?d.price:0);
   const obj={dressId:did,clientName:cl,clientPhone:document.getElementById("rPhone").value.trim(),startDate:s,endDate:e,status:formStatus,notes:document.getElementById("rNotes").value.trim(),totalPrice:tot};
-  if(editRental){Object.assign(editRental,obj);showToast("Обновлён!")}else{obj.id=gid();rentals.push(obj);if(d)d.rentCount=(d.rentCount||0)+1;showToast("Создан!")}
-  save();closeModal();renderAll();
+  if(editRental){Object.assign(editRental,obj);fbSaveRental(editRental);showToast("Обновлён!")}
+  else{obj.id=gid();rentals.push(obj);fbSaveRental(obj);if(d){d.rentCount=(d.rentCount||0)+1;fbSaveDress(d)}showToast("Создан!")}
+  closeModal();renderAll();
 }
 
 // ── RENTALS TAB ──
@@ -236,8 +315,20 @@ function renderRen(){
     return`<div class="rc2 ${alC}"><div class="rc2-ph">${ph}</div><div class="rc2-b"><div class="rc2-top"><div><div class="rc2-dn">${d?d.name:"?"}</div><div class="rc2-cl">${r.clientName}</div><div class="rc2-ph2">${r.clientPhone||""}</div></div><div class="rac"><button class="rab" onclick="openRenM('${r.id}',null)">✏️</button><button class="rab" onclick="delRen('${r.id}')">🗑️</button></div></div><div class="rc2-meta"><div class="sbadge ${cfg.c}" style="font-size:10px;padding:4px 10px"><div class="sdot"></div>${cfg.l}</div>${alT}<div class="rc2-dates">${fmtD(r.startDate)} - ${fmtD(r.endDate)}</div>${r.status==="booked"?`<button class="rbtn" style="padding:4px 10px;font-size:10px" onclick="chRS('${r.id}','rented')">Выдать</button>`:""}${r.status==="rented"?`<button class="rbtn" style="padding:4px 10px;font-size:10px;background:linear-gradient(135deg,#3b82f6,#2563eb)" onclick="chRS('${r.id}','returned')">Вернуть</button>`:""}<div class="rc2-pr">${fmt(r.totalPrice)}</div></div></div></div>`;
   }).join("");
 }
-function chRS(id,st){const r=rentals.find(x=>x.id===id);if(r){r.status=st;save();renderAll();showToast(ST[st].l)}}
-function delRen(id){if(!confirm("Удалить?"))return;rentals=rentals.filter(r=>r.id!==id);save();renderAll();showToast("Удалён","info")}
+
+// 🔥 FIREBASE: Смена статуса проката
+function chRS(id,st){
+  const r=rentals.find(x=>x.id===id);
+  if(r){r.status=st;fbSaveRental(r);renderAll();showToast(ST[st].l)}
+}
+
+// 🔥 FIREBASE: Удаление проката
+function delRen(id){
+  if(!confirm("Удалить?"))return;
+  rentals=rentals.filter(r=>r.id!==id);
+  fbDeleteRental(id);
+  renderAll();showToast("Удалён","info");
+}
 
 // ── CALENDAR ──
 function renderCal2(){
@@ -311,19 +402,24 @@ function checkBookOvl(dressId){
   const conflicts=checkOverlap(dressId,s,e,null);
   if(conflicts.length){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Эти даты уже заняты!</strong><br>${conflicts.map(c=>`${c.clientName}: ${fmtD(c.startDate)} - ${fmtD(c.endDate)}`).join("<br>")}<br>Выберите другие даты.</div>`;btn.disabled=true;btn.style.opacity=".5"}else{warn.innerHTML="";btn.disabled=false;btn.style.opacity="1"}
 }
+
+// 🔥 FIREBASE: Создание брони из каталога клиента
 function subBook(id){
   const d=gD(id);if(!d)return;const nm=document.getElementById("bN").value.trim(),ph=document.getElementById("bPh").value.trim();
   if(!nm){showToast("Имя!","error");return}if(!ph){showToast("Телефон!","error");return}
   const s=document.getElementById("bS").value,e=document.getElementById("bE").value;
   if(checkOverlap(id,s,e,null).length){showToast("Даты заняты!","error");return}
   const tot=daysN(s,e)*d.price;
-  rentals.push({id:gid(),dressId:id,clientName:nm,clientPhone:ph,startDate:s,endDate:e,status:"booked",notes:document.getElementById("bNotes").value.trim(),totalPrice:tot});
-  d.rentCount=(d.rentCount||0)+1;save();
+  const newRental={id:gid(),dressId:id,clientName:nm,clientPhone:ph,startDate:s,endDate:e,status:"booked",notes:document.getElementById("bNotes").value.trim(),totalPrice:tot};
+  rentals.push(newRental);
+  d.rentCount=(d.rentCount||0)+1;
+  fbSaveRental(newRental);
+  fbSaveDress(d);
   document.getElementById("moBody").innerHTML=`<div class="bsuc"><div class="bsuc-i">🎉</div><h3>Забронировано!</h3><p><strong>${d.name}</strong><br>${fmtD(s)} - ${fmtD(e)}<br>Итого: <strong>${fmt(tot)}</strong></p><button class="bsb" style="margin-top:16px;max-width:200px" onclick="closeModal()">OK</button></div>`;
   renderAll();
 }
 
-// ── PDF: 3 фото без растяжки + даты брони + только отфильтрованные ──
+// ── PDF (без изменений) ──
 async function exportPDF(){
   const btn=document.getElementById("pdfBtn");btn.disabled=true;
   document.getElementById("pdfOvl").style.display="flex";
@@ -429,7 +525,22 @@ async function exportPDF(){
 // ── RENDER ALL ──
 function renderAll(){renderStats();renderNotifs();renderAlerts();if(curTab==="catalog")renderCat();if(curTab==="calendar")renderCal2();if(curTab==="rentals")renderRen();if(curTab==="client")renderCl()}
 
-// ── INIT ──
-initF();renderAll();
-setTimeout(()=>{const ns=getNotifs();const ov=ns.filter(n=>n.type==="overdue"),ex=ns.filter(n=>n.type==="expiring");if(ov.length)showToast("🚨 Просрочено: "+ov.length,"error");if(ex.length)showToast("⚠️ Скоро возврат: "+ex.length,"warn")},800);
-setInterval(()=>{renderNotifs();renderAlerts()},300000);
+// ═══════════════════════════════════════
+// 🔥 FIREBASE: ЗАПУСК ПРИЛОЖЕНИЯ
+// ═══════════════════════════════════════
+async function startApp(){
+  console.log("⏳ Загрузка данных из Firebase...");
+  await fbLoadAll();
+  initF();
+  renderAll();
+  setTimeout(()=>{
+    const ns=getNotifs();
+    const ov=ns.filter(n=>n.type==="overdue"),ex=ns.filter(n=>n.type==="expiring");
+    if(ov.length)showToast("🚨 Просрочено: "+ov.length,"error");
+    if(ex.length)showToast("⚠️ Скоро возврат: "+ex.length,"warn");
+  },800);
+  setInterval(()=>{renderNotifs();renderAlerts()},60000);
+}
+
+// 🔥 Запускаем!
+startApp();
