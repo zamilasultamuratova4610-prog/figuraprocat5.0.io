@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>ФигураПрокат — Прокат костюмов для фигурного катания</title>
+<meta name="description" content="Прокат костюмов для фигурного катания. Каталог, бронирование, управление.">
+<meta name="theme-color" content="#0ea5e9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛸️</text></svg>">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header class="hdr"><div class="hdr-in">
+  <div class="logo"><div class="logo-ico">⛸️</div><div><div class="logo-t">ФигураПрокат</div><div class="logo-s">Прокат костюмов</div></div></div>
+  <nav class="nav">
+    <button class="nb active" onclick="switchTab('catalog')">🗂️ <span class="nbl">Каталог</span></button>
+    <button class="nb" onclick="switchTab('calendar')">📅 <span class="nbl">Календарь</span></button>
+    <button class="nb" onclick="switchTab('rentals')">📋 <span class="nbl">Прокаты</span></button>
+    <button class="nb cnb" onclick="switchTab('client')">👩‍💼 <span class="nbl">Клиентам</span></button>
+  </nav>
+  <div class="hdr-r">
+    <div class="bell-wrap"><button class="bell-btn" id="bellBtn" onclick="toggleNP()">🔔<div class="bell-b hid" id="bellB">0</div></button>
+      <div class="npanel" id="nPanel"><div class="npanel-h"><h3>🔔 Уведомления</h3><button class="npanel-clr" onclick="dismissN()">Очистить</button></div><div class="nlist" id="nList"></div></div>
+    </div>
+    <button class="add-btn" id="gab" onclick="openAddM()">＋ <span id="abl">Костюм</span></button>
+  </div>
+</div></header>
+
+<main class="main">
+  <div id="alertsBar"></div>
+  <div class="stats" id="statsBar"></div>
+
+  <div class="tab active" id="tab-catalog">
+    <div class="fb"><div class="sw"><span class="si2">🔍</span><input class="sin" id="catSearch" placeholder="Поиск..." oninput="renderCat()"></div>
+    <div class="fr">
+      <select class="fsel" id="fCat" onchange="renderCat()"><option value="">Все категории</option><option>Детский</option><option>Юниорский</option><option>Взрослый</option></select>
+      <select class="fsel" id="fSize" onchange="renderCat()"><option value="">Все размеры</option></select>
+      <select class="fsel" id="fStat" onchange="renderCat()"><option value="">Все статусы</option><option value="available">Свободно</option><option value="booked">Забронировано</option><option value="rented">В прокате</option><option value="returned">Возвращено</option></select>
+      <select class="fsel" id="fMat" onchange="renderCat()"><option value="">Все материалы</option></select>
+      <button class="szm-btn" onclick="openSizesM()">⚙️ Размеры</button>
+    </div></div>
+    <div class="dg" id="dressGrid"></div>
+  </div>
+
+  <div class="tab" id="tab-calendar"><div class="cw"><div class="ch2"><button class="cnb3" onclick="calPrev()">◀</button><div style="font-size:18px;font-weight:800" id="calTitle"></div><button class="cnb3" onclick="calNext()">▶</button></div><div class="cgrid" id="calHdr"></div><div class="cgrid" id="calGrid"></div><div id="calDet"></div></div></div>
+
+  <div class="tab" id="tab-rentals"><div class="rfils" id="renFils"></div><div class="sw"><span class="si2">🔍</span><input class="sin" id="renSearch" placeholder="Поиск..." oninput="renderRen()"></div><div id="renList" style="margin-top:12px"></div></div>
+
+  <div class="tab" id="tab-client">
+    <div class="cl-hero"><h1>Костюмы для фигурного катания</h1><p>Профессиональные костюмы для выступлений и тренировок.</p></div>
+    <div class="pdf-wrap"><div class="pdf-info">📤 Отправьте каталог клиенту</div><button class="pdf-btn" id="pdfBtn" onclick="exportPDF()">📤 Отправить каталог</button></div>
+    <div class="cl-filt"><div class="cl-search"><span class="cl-search-ico">🔍</span><input id="clSearch" placeholder="Поиск..." oninput="renderCl()"></div>
+      <select class="fsel" id="clCatF" onchange="renderCl()"><option value="">Все категории</option><option>Детский</option><option>Юниорский</option><option>Взрослый</option></select>
+      <select class="fsel" id="clSizeF" onchange="renderCl()"><option value="">Все размеры</option></select>
+    </div>
+    <div class="cl-grid" id="clGrid"></div>
+  </div>
+</main>
+
+<div class="mov" id="mov" style="display:none" onclick="closeMOV(event)"><div class="mo" id="moBox" onclick="event.stopPropagation()"><div class="moh"><div class="mot" id="moTitle"></div><button class="moc" onclick="closeModal()">✕</button></div><div class="mob" id="moBody"></div></div></div>
+
+<div id="pdfOvl" style="display:none" class="pdf-overlay"><div class="pdf-progress"><div class="pdf-spin">⚙️</div><div style="font-size:16px;font-weight:800;margin-bottom:8px">Формируем PDF</div><div style="font-size:13px;color:var(--g500)" id="pdfMsg">Подготовка...</div><div class="pdf-pb-wrap"><div class="pdf-pb" id="pdfPb" style="width:0%"></div></div><div style="font-size:13px;color:var(--g500);margin-top:6px" id="pdfPt">0/0</div></div></div>
+
+<div id="toastWrap"></div>
+
+<script src="/js/app.js"></script>
+<script>
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(e=>console.log('SW fail',e))}
+</script>
+</body>
+</html>
