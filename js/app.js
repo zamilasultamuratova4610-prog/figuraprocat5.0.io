@@ -11,12 +11,23 @@ async function loadFont(){
 loadFont();
 
 // ── HELPERS ──
-const CUR="\u20B8",fmt=n=>(n||0).toLocaleString("ru-KZ")+" "+CUR,gid=()=>Math.random().toString(36).substr(2,9);
+const escMap={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const esc=v=>String(v??"").replace(/[&<>"']/g,ch=>escMap[ch]);
+const escAttr=v=>esc(v).replace(/`/g,"&#96;");
+const cleanBase=v=>String(v??"").replace(/\u0000/g,"").replace(/[<>&]/g,ch=>({"<":"‹",">":"›","&":"＆"}[ch])).replace(/\r/g,"");
+const safeLine=v=>cleanBase(v).replace(/\s+/g," ").trim();
+const safeMultiline=v=>cleanBase(v).replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
+const safePhone=v=>String(v??"").replace(/[^\d+]/g,"");
+const safeImgSrc=v=>{const s=String(v??"").trim();return /^(data:image\/(?:png|jpe?g|webp|gif|svg\+xml);base64,|https?:\/\/|blob:)/i.test(s)?s:""};
+const toNum=(v,f=0)=>{const n=Number(v);return Number.isFinite(n)?n:f};
+const toLocalISODate=d=>{const copy=new Date(d);copy.setMinutes(copy.getMinutes()-copy.getTimezoneOffset());return copy.toISOString().split("T")[0]};
+const CUR="\u20B8",fmt=n=>toNum(n).toLocaleString("ru-KZ")+" "+CUR,gid=()=>Math.random().toString(36).slice(2,11);
 const fmtD=d=>d?new Date(d).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric"}):"";
 const fmtDs=d=>d?new Date(d).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"}):"";
-const daysN=(a,b)=>Math.max(1,Math.ceil((new Date(b)-new Date(a))/864e5));
-const today=()=>new Date().toISOString().split("T")[0];
-const addD=n=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().split("T")[0]};
+const daysN=(a,b)=>{const s=new Date(a),e=new Date(b);if(Number.isNaN(s.getTime())||Number.isNaN(e.getTime())||e<s)return 0;return Math.max(1,Math.ceil((e-s)/864e5))};
+const isValidDateRange=(a,b)=>daysN(a,b)>0;
+const today=()=>toLocalISODate(new Date());
+const addD=n=>{const d=new Date();d.setDate(d.getDate()+n);return toLocalISODate(d)};
 const diffD=(a,b)=>Math.round((new Date(b)-new Date(a))/864e5);
 const MO=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 const CATS=["Детский","Юниорский","Взрослый"];
@@ -27,13 +38,55 @@ function getSizes(){return customSizes}
 
 // 🔥 FIREBASE: Сохранить размеры
 function saveSizes(){
-  db.collection('fp_settings').doc('sizes').set({list:customSizes}).catch(e=>console.error("Sizes save err:",e));
+  customSizes=sanitizeSizeList(customSizes);
+  return db.collection('fp_settings').doc('sizes').set({list:customSizes},{merge:true}).catch(e=>{console.error("Sizes save err:",e);throw e});
 }
 
 const MATS=["Лайкра","Бифлекс","Стрейч","Велюр","Сетка","Комбинированный","Бархат","Микрофибра"];
 const DECS=["Стразы Swarovski","Термостразы","Перья","Вышивка","Паетки","Бисер","Без декора"];
 const STYS=["Классика","Лирика","Характерный","Народный","Произвольная","Джаз","Танцы на льду"];
 const ST={available:{l:"Свободно",c:"sa",d:"#10b981",rc:"rib-av",i:"✅"},booked:{l:"Забронировано",c:"sb2",d:"#f59e0b",rc:"rib-bk",i:"🕐"},rented:{l:"В прокате",c:"sr",d:"#f43f5e",rc:"rib-rn",i:"🚫"},returned:{l:"Возвращено",c:"srt",d:"#3b82f6",rc:"rib-rt",i:"🔄"}};
+const sanitizeSizeList=list=>[...new Set((Array.isArray(list)?list:DEF_SIZES).map(safeLine).filter(Boolean))];
+function normalizeDress(id,data={}){
+  return{
+    id:String(data.id||id||gid()),
+    name:safeLine(data.name),
+    category:CATS.includes(data.category)?data.category:CATS[0],
+    size:safeLine(data.size||DEF_SIZES[0]),
+    material:MATS.includes(data.material)?data.material:MATS[0],
+    decoration:DECS.includes(data.decoration)?data.decoration:DECS[DECS.length-1],
+    style:STYS.includes(data.style)?data.style:STYS[0],
+    price:Math.max(0,toNum(data.price,0)),
+    deposit:Math.max(0,toNum(data.deposit,0)),
+    description:safeMultiline(data.description),
+    photos:(Array.isArray(data.photos)?data.photos:[]).map(safeImgSrc).filter(Boolean).slice(0,8),
+    rating:Math.min(5,Math.max(0,toNum(data.rating,5))),
+    rentCount:Math.max(0,toNum(data.rentCount,0)),
+    isDraft:Boolean(data.isDraft),
+    createdAt:toNum(data.createdAt,Date.now()),
+    updatedAt:toNum(data.updatedAt,Date.now())
+  };
+}
+function normalizeRental(id,data={}){
+  const start=/^\d{4}-\d{2}-\d{2}$/.test(String(data.startDate||"").trim())?String(data.startDate).trim():today();
+  const rawEnd=/^\d{4}-\d{2}-\d{2}$/.test(String(data.endDate||"").trim())?String(data.endDate).trim():start;
+  const end=isValidDateRange(start,rawEnd)?rawEnd:start;
+  const status=ST[data.status]?data.status:"booked";
+  return{
+    id:String(data.id||id||gid()),
+    dressId:safeLine(data.dressId),
+    clientName:safeLine(data.clientName),
+    clientPhone:safePhone(data.clientPhone),
+    startDate:start,
+    endDate:end,
+    status,
+    notes:safeMultiline(data.notes),
+    totalPrice:Math.max(0,toNum(data.totalPrice,0))
+  };
+}
+function refreshVisibleDresses(){dresses=allDresses.filter(d=>!d.isDraft)}
+function upsertLocalDress(d){const idx=allDresses.findIndex(x=>x.id===d.id);if(idx>=0)allDresses.splice(idx,1,d);else allDresses.push(d);refreshVisibleDresses()}
+function upsertLocalRental(r){const idx=rentals.findIndex(x=>x.id===r.id);if(idx>=0)rentals.splice(idx,1,r);else rentals.push(r)}
 
 // ── DEFAULT DATA (для первого запуска) ──
 const DEFAULT_DRESSES=[
@@ -55,71 +108,79 @@ const DEFAULT_RENTALS=[
 ];
 
 // ── STATE ──
-let dresses=[...DEFAULT_DRESSES];  // 🔥 Загрузится из Firebase
-let rentals=[...DEFAULT_RENTALS];  // 🔥 Загрузится из Firebase
+let allDresses=DEFAULT_DRESSES.map(d=>normalizeDress(d.id,d));
+let dresses=allDresses.filter(d=>!d.isDraft);
+let rentals=DEFAULT_RENTALS.map(r=>normalizeRental(r.id,r));
 let curTab="catalog",calY=new Date().getFullYear(),calM=new Date().getMonth(),calSel=null;
 let renFil="all",editDress=null,editRental=null,detPhIdx=0,formPhotos=[],formStatus="booked";
 let clStatFil="all",dismissedN=new Set();
+let appReady=false,dressDraftId=null,dressDraftTouched=false,dressAutosaveTimer=null,dressSaveSeq=0;
 
 // ═══════════════════════════════════════════
 // 🔥 FIREBASE: Функции сохранения / удаления
 // ═══════════════════════════════════════════
 function fbSaveDress(d){
-  db.collection('fp_dresses').doc(d.id).set(d).catch(e=>console.error("Dress save err:",e));
+  const payload=normalizeDress(d.id,d);
+  return db.collection('fp_dresses').doc(payload.id).set(payload,{merge:true}).then(()=>payload).catch(e=>{console.error("Dress save err:",e);throw e});
 }
 function fbDeleteDress(id){
-  db.collection('fp_dresses').doc(id).delete().catch(e=>console.error("Dress del err:",e));
+  return db.collection('fp_dresses').doc(id).delete().catch(e=>{console.error("Dress del err:",e);throw e});
 }
 function fbSaveRental(r){
-  db.collection('fp_rentals').doc(r.id).set(r).catch(e=>console.error("Rental save err:",e));
+  const payload=normalizeRental(r.id,r);
+  return db.collection('fp_rentals').doc(payload.id).set(payload,{merge:true}).then(()=>payload).catch(e=>{console.error("Rental save err:",e);throw e});
 }
 function fbDeleteRental(id){
-  db.collection('fp_rentals').doc(id).delete().catch(e=>console.error("Rental del err:",e));
+  return db.collection('fp_rentals').doc(id).delete().catch(e=>{console.error("Rental del err:",e);throw e});
 }
 
-// 🔥 FIREBASE: Загрузка данных при старте
-async function fbLoadAll(){
-  try{
-    // Загружаем платья
-    const dSnap=await db.collection('fp_dresses').get();
-    if(!dSnap.empty){
-      dresses=dSnap.docs.map(doc=>doc.data());
-    }else{
-      // Первый запуск — сохраняем демо-данные
-      DEFAULT_DRESSES.forEach(d=>fbSaveDress(d));
-      dresses=[...DEFAULT_DRESSES];
-    }
-
-    // Загружаем прокаты
-    const rSnap=await db.collection('fp_rentals').get();
-    if(!rSnap.empty){
-      rentals=rSnap.docs.map(doc=>doc.data());
-    }else{
-      DEFAULT_RENTALS.forEach(r=>fbSaveRental(r));
-      rentals=[...DEFAULT_RENTALS];
-    }
-
-    // Загружаем размеры
-    const sDoc=await db.collection('fp_settings').doc('sizes').get();
-    if(sDoc.exists){
-      customSizes=sDoc.data().list;
-    }else{
-      saveSizes(); // сохраняем дефолтные
-    }
-
-    console.log("✅ Firebase: загружено",dresses.length,"платьев,",rentals.length,"прокатов");
-  }catch(e){
-    console.error("❌ Firebase load error:",e);
-    showToast("Ошибка загрузки данных!","error");
-  }
+async function ensureSeedData(){
+  const dSnap=await db.collection('fp_dresses').get();
+  if(dSnap.empty)await Promise.all(DEFAULT_DRESSES.map(d=>fbSaveDress(d)));
+  const rSnap=await db.collection('fp_rentals').get();
+  if(rSnap.empty)await Promise.all(DEFAULT_RENTALS.map(r=>fbSaveRental(r)));
+  const sDoc=await db.collection('fp_settings').doc('sizes').get();
+  if(!sDoc.exists)await saveSizes();
+}
+function watchFirestore(ref,handler,label){
+  return new Promise((resolve,reject)=>{
+    let first=true;
+    const unsub=ref.onSnapshot(snap=>{
+      handler(snap);
+      if(first){first=false;resolve(unsub)}
+    },e=>{
+      console.error(`${label} sync err:`,e);
+      if(first){first=false;reject(e)}
+      else showToast(`Ошибка синхронизации: ${label}`,"error");
+    });
+  });
+}
+async function startRealtimeSync(){
+  await Promise.all([
+    watchFirestore(db.collection('fp_dresses'),snap=>{
+      allDresses=snap.docs.map(doc=>normalizeDress(doc.id,doc.data()));
+      refreshVisibleDresses();
+      if(appReady)renderAll();
+    },"каталог"),
+    watchFirestore(db.collection('fp_rentals'),snap=>{
+      rentals=snap.docs.map(doc=>normalizeRental(doc.id,doc.data())).filter(r=>r.dressId);
+      if(appReady)renderAll();
+    },"прокаты"),
+    watchFirestore(db.collection('fp_settings').doc('sizes'),snap=>{
+      customSizes=sanitizeSizeList(snap.exists&&snap.data()?.list?snap.data().list:DEF_SIZES);
+      if(appReady){initF();renderAll();}
+    },"размеры")
+  ]);
+  console.log("✅ Firebase: загружено",dresses.length,"платьев,",rentals.length,"прокатов");
 }
 
 const gDS=id=>{const r=rentals.find(r=>r.dressId===id&&r.status!=="returned");return r?r.status:"available"};
 const gAR=id=>rentals.find(r=>r.dressId===id&&r.status!=="returned");
-const gD=id=>dresses.find(d=>d.id===id);
+const gD=id=>allDresses.find(d=>d.id===id);
 const stars=(r,n=5)=>[...Array(n)].map((_,i)=>`<span style="color:${i<r?"#fbbf24":"var(--g200)"}">★</span>`).join("");
 function compImg(file){return new Promise(res=>{const r=new FileReader();r.onload=e=>{const img=new Image();img.onload=()=>{const c=document.createElement("canvas");let w=img.width,h=img.height;if(w>600){h=h*600/w;w=600}c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);res(c.toDataURL("image/jpeg",.75))};img.src=e.target.result};r.readAsDataURL(file)})}
 function checkOverlap(dressId,startDate,endDate,excludeRentalId){
+  if(!isValidDateRange(startDate,endDate))return[];
   const start=new Date(startDate),end=new Date(endDate);
   return rentals.filter(r=>{if(r.dressId!==dressId)return false;if(r.status==="returned")return false;if(excludeRentalId&&r.id===excludeRentalId)return false;return start<=new Date(r.endDate)&&end>=new Date(r.startDate)});
 }
@@ -129,8 +190,9 @@ function getDressBookings(dressId){
 function getImgDims(src){return new Promise(res=>{const img=new Image();img.onload=()=>res({w:img.naturalWidth,h:img.naturalHeight});img.onerror=()=>res({w:1,h:1});img.src=src})}
 function fitInBox(imgW,imgH,boxW,boxH){const ir=imgW/imgH,br=boxW/boxH;let w,h;if(ir>br){w=boxW;h=boxW/ir}else{h=boxH;w=boxH*ir}return{x:(boxW-w)/2,y:(boxH-h)/2,w,h}}
 
-function showToast(m,t="success"){const w=document.getElementById("toastWrap"),el=document.createElement("div");el.className="toast "+t;el.innerHTML=`<span>${m}</span><button class="tc" onclick="this.parentElement.remove()">✕</button>`;w.appendChild(el);setTimeout(()=>{if(el.parentElement)el.remove()},4000)}
-function closeModal(){document.getElementById("mov").style.display="none";document.getElementById("moBox").classList.remove("wide")}
+function showToast(m,t="success"){const w=document.getElementById("toastWrap"),el=document.createElement("div"),txt=document.createElement("span"),btn=document.createElement("button");el.className="toast "+t;txt.textContent=String(m??"");btn.className="tc";btn.type="button";btn.textContent="✕";btn.onclick=()=>el.remove();el.appendChild(txt);el.appendChild(btn);w.appendChild(el);setTimeout(()=>{if(el.parentElement)el.remove()},4000)}
+function setDressSaveHint(message,state=""){const el=document.getElementById("dressSaveHint");if(!el)return;el.textContent=message||"";el.style.color=state==="error"?"#ef4444":"var(--g500)"}
+function closeModal(){clearTimeout(dressAutosaveTimer);dressAutosaveTimer=null;dressDraftTouched=false;dressDraftId=null;document.getElementById("mov").style.display="none";document.getElementById("moBox").classList.remove("wide")}
 function closeMOV(e){if(e.target===e.currentTarget)closeModal()}
 
 // ── NOTIFICATIONS ──
@@ -214,7 +276,8 @@ function renderCat(){
 function delDress(id){
   if(!confirm("Удалить?"))return;
   const relRentals=rentals.filter(r=>r.dressId===id);
-  dresses=dresses.filter(d=>d.id!==id);
+  allDresses=allDresses.filter(d=>d.id!==id);
+  refreshVisibleDresses();
   rentals=rentals.filter(r=>r.dressId!==id);
   fbDeleteDress(id);
   relRentals.forEach(r=>fbDeleteRental(r.id));
@@ -222,32 +285,79 @@ function delDress(id){
 }
 
 // ── DRESS MODAL ──
+function queueDressAutosave(){
+  dressDraftTouched=true;
+  clearTimeout(dressAutosaveTimer);
+  setDressSaveHint("Сохраняем изменения...");
+  dressAutosaveTimer=setTimeout(()=>{persistDressDraft(false).catch(()=>{})},500);
+}
+function collectDressFormData(){
+  const base=editDress||gD(dressDraftId)||{};
+  return normalizeDress(dressDraftId||base.id||gid(),{
+    ...base,
+    name:document.getElementById("dName")?.value,
+    category:document.getElementById("dCat")?.value,
+    size:document.getElementById("dSize")?.value,
+    material:document.getElementById("dMat")?.value,
+    decoration:document.getElementById("dDec")?.value,
+    style:document.getElementById("dStyle")?.value,
+    price:document.getElementById("dPrice")?.value,
+    deposit:document.getElementById("dDep")?.value,
+    description:document.getElementById("dDesc")?.value,
+    photos:[...formPhotos],
+    isDraft:!editDress,
+    updatedAt:Date.now()
+  });
+}
+async function persistDressDraft(finalize=false){
+  if(!document.getElementById("dName"))return false;
+  const draft=collectDressFormData();
+  const meaningful=draft.name||draft.description||draft.photos.length||draft.price||draft.deposit;
+  if(!meaningful&&!finalize)return false;
+  if(finalize&&!draft.name){showToast("Название!","error");return false}
+  if(finalize&&!draft.price){showToast("Цену!","error");return false}
+  const payload={...draft,isDraft:editDress?false:!finalize,updatedAt:Date.now()};
+  const token=++dressSaveSeq;
+  try{
+    const saved=await fbSaveDress(payload);
+    upsertLocalDress(saved);
+    renderAll();
+    setDressSaveHint(finalize?"Сохранено":"Черновик сохранён");
+    dressDraftTouched=false;
+    if(finalize)editDress=saved;
+    return true;
+  }catch(e){
+    if(token===dressSaveSeq)setDressSaveHint("Ошибка сохранения","error");
+    showToast("Не удалось сохранить карточку","error");
+    return false;
+  }
+}
 function openDressM(id){
-  editDress=id?gD(id):null;formPhotos=editDress?[...(editDress.photos||[])]:[];
+  editDress=id?gD(id):null;dressDraftId=editDress?editDress.id:gid();dressDraftTouched=false;formPhotos=editDress?[...(editDress.photos||[])]:[];
   document.getElementById("moTitle").textContent=editDress?"Редактировать":"Новый костюм";
   document.getElementById("moBox").classList.remove("wide");document.getElementById("mov").style.display="flex";
   const d=editDress||{};
   document.getElementById("moBody").innerHTML=`
-    <div class="fg"><label class="fl">Название *</label><input class="fi" id="dName" value="${d.name||""}"></div>
-    <div class="fgrid"><div class="fg"><label class="fl">Категория</label><select class="fse" id="dCat">${CATS.map(c=>`<option ${d.category===c?"selected":""}>${c}</option>`).join("")}</select></div><div class="fg"><label class="fl">Размер</label><select class="fse" id="dSize">${getSizes().map(s=>`<option ${d.size===s?"selected":""}>${s}</option>`).join("")}</select></div></div>
-    <div class="fgrid3"><div class="fg"><label class="fl">Материал</label><select class="fse" id="dMat">${MATS.map(m=>`<option ${d.material===m?"selected":""}>${m}</option>`).join("")}</select></div><div class="fg"><label class="fl">Украшение</label><select class="fse" id="dDec">${DECS.map(x=>`<option ${d.decoration===x?"selected":""}>${x}</option>`).join("")}</select></div><div class="fg"><label class="fl">Стиль</label><select class="fse" id="dStyle">${STYS.map(s=>`<option ${d.style===s?"selected":""}>${s}</option>`).join("")}</select></div></div>
-    <div class="fgrid"><div class="fg"><label class="fl">Цена/сут *</label><input class="fi" type="number" id="dPrice" value="${d.price||""}"></div><div class="fg"><label class="fl">Залог</label><input class="fi" type="number" id="dDep" value="${d.deposit||""}"></div></div>
-    <div class="fg"><label class="fl">Описание</label><textarea class="fta" id="dDesc" rows="3">${d.description||""}</textarea></div>
+    <div class="fg"><label class="fl">Название *</label><input class="fi" id="dName" value="${escAttr(d.name||"")}" oninput="queueDressAutosave()"></div>
+    <div class="fgrid"><div class="fg"><label class="fl">Категория</label><select class="fse" id="dCat" onchange="queueDressAutosave()">${CATS.map(c=>`<option ${d.category===c?"selected":""}>${c}</option>`).join("")}</select></div><div class="fg"><label class="fl">Размер</label><select class="fse" id="dSize" onchange="queueDressAutosave()">${getSizes().map(s=>`<option ${d.size===s?"selected":""}>${s}</option>`).join("")}</select></div></div>
+    <div class="fgrid3"><div class="fg"><label class="fl">Материал</label><select class="fse" id="dMat" onchange="queueDressAutosave()">${MATS.map(m=>`<option ${d.material===m?"selected":""}>${m}</option>`).join("")}</select></div><div class="fg"><label class="fl">Украшение</label><select class="fse" id="dDec" onchange="queueDressAutosave()">${DECS.map(x=>`<option ${d.decoration===x?"selected":""}>${x}</option>`).join("")}</select></div><div class="fg"><label class="fl">Стиль</label><select class="fse" id="dStyle" onchange="queueDressAutosave()">${STYS.map(s=>`<option ${d.style===s?"selected":""}>${s}</option>`).join("")}</select></div></div>
+    <div class="fgrid"><div class="fg"><label class="fl">Цена/сут *</label><input class="fi" type="number" id="dPrice" value="${d.price||""}" oninput="queueDressAutosave()"></div><div class="fg"><label class="fl">Залог</label><input class="fi" type="number" id="dDep" value="${d.deposit||""}" oninput="queueDressAutosave()"></div></div>
+    <div class="fg"><label class="fl">Описание</label><textarea class="fta" id="dDesc" rows="3" oninput="queueDressAutosave()">${esc(d.description||"")}</textarea></div>
     <div class="fg"><label class="fl">Фото (до 8)</label><div class="pgrid" id="phGrid"></div><input type="file" id="phInp" accept="image/*" multiple style="display:none" onchange="hPh(event)"></div>
+    <div id="dressSaveHint" style="font-size:12px;color:var(--g500);margin-top:6px">${editDress?"Изменения сохраняются автоматически":"Черновик сохранится автоматически"}</div>
     <div class="fbtns"><button class="bcn" onclick="closeModal()">Отмена</button><button class="bsb" onclick="subDress()">${editDress?"Сохранить":"Добавить"}</button></div>`;
   rPhGrid();
 }
-function rPhGrid(){const g=document.getElementById("phGrid");if(!g)return;g.innerHTML=formPhotos.map((p,i)=>`<div class="pth"><img src="${p}"><button class="prm" onclick="formPhotos.splice(${i},1);rPhGrid()">✕</button></div>`).join("")+`<button class="padd" onclick="document.getElementById('phInp').click()">📷<span>Фото</span></button>`}
-async function hPh(e){for(const f of[...e.target.files]){if(formPhotos.length>=8)break;formPhotos.push(await compImg(f))}rPhGrid();e.target.value=""}
+function rPhGrid(){const g=document.getElementById("phGrid");if(!g)return;g.innerHTML=formPhotos.map((p,i)=>`<div class="pth"><img src="${escAttr(p)}"><button class="prm" onclick="formPhotos.splice(${i},1);queueDressAutosave();rPhGrid()">✕</button></div>`).join("")+`<button class="padd" onclick="document.getElementById('phInp').click()">📷<span>Фото</span></button>`}
+async function hPh(e){for(const f of[...e.target.files]){if(formPhotos.length>=8)break;formPhotos.push(await compImg(f))}rPhGrid();queueDressAutosave();e.target.value=""}
 
 // 🔥 FIREBASE: Сохранение платья
-function subDress(){
-  const name=document.getElementById("dName").value.trim(),price=parseInt(document.getElementById("dPrice").value);
-  if(!name){showToast("Название!","error");return}if(!price){showToast("Цену!","error");return}
-  const obj={name,category:document.getElementById("dCat").value,size:document.getElementById("dSize").value,material:document.getElementById("dMat").value,decoration:document.getElementById("dDec").value,style:document.getElementById("dStyle").value,price,deposit:parseInt(document.getElementById("dDep").value)||0,description:document.getElementById("dDesc").value.trim(),photos:[...formPhotos]};
-  if(editDress){Object.assign(editDress,obj);fbSaveDress(editDress);showToast("Обновлён!")}
-  else{obj.id=gid();obj.rating=5;obj.rentCount=0;dresses.push(obj);fbSaveDress(obj);showToast("Добавлен!")}
-  closeModal();renderAll();
+async function subDress(){
+  const wasEditing=Boolean(editDress);
+  const saved=await persistDressDraft(true);
+  if(!saved)return;
+  showToast(wasEditing?"Обновлён!":"Добавлен!");
+  closeModal();
 }
 
 // ── DETAIL MODAL ──
@@ -268,36 +378,50 @@ function openRenM(rid,did){
   const r=editRental||{},sd=did||r.dressId||"";
   document.getElementById("moBody").innerHTML=`
     <div class="fg"><label class="fl">Костюм *</label><select class="fse" id="rDress" onchange="uRP();checkOvl()"><option value="">--</option>${dresses.map(d=>`<option value="${d.id}" ${d.id===sd?"selected":""}>${d.name} (${d.size})</option>`).join("")}</select></div>
-    <div class="fg"><label class="fl">Клиент *</label><input class="fi" id="rClient" value="${r.clientName||""}"></div>
-    <div class="fg"><label class="fl">Телефон</label><input class="fi" id="rPhone" value="${r.clientPhone||""}"></div>
+    <div class="fg"><label class="fl">Клиент *</label><input class="fi" id="rClient" value="${escAttr(r.clientName||"")}"></div>
+    <div class="fg"><label class="fl">Телефон</label><input class="fi" id="rPhone" value="${escAttr(r.clientPhone||"")}"></div>
     <div class="fgrid"><div class="fg"><label class="fl">Начало *</label><input class="fi" type="date" id="rStart" value="${r.startDate||today()}" onchange="uRP();checkOvl()"></div><div class="fg"><label class="fl">Возврат *</label><input class="fi" type="date" id="rEnd" value="${r.endDate||addD(3)}" onchange="uRP();checkOvl()"></div></div>
     <div id="ovlWarn"></div>
     <div class="fg"><label class="fl">Статус</label><div class="spills" id="rSP"></div></div>
     <div class="pp" id="renPP"></div>
-    <div class="fg"><label class="fl">Заметки</label><textarea class="fta" id="rNotes" rows="2">${r.notes||""}</textarea></div>
+    <div class="fg"><label class="fl">Заметки</label><textarea class="fta" id="rNotes" rows="2">${esc(r.notes||"")}</textarea></div>
     <div class="fbtns"><button class="bcn" onclick="closeModal()">Отмена</button><button class="bsb" id="renSubBtn" onclick="subRen()">${editRental?"Сохранить":"Создать"}</button></div>`;
   rSP2();uRP();checkOvl();
 }
 function rSP2(){const el=document.getElementById("rSP");if(!el)return;el.innerHTML=["booked","rented","returned"].map(s=>`<button class="spill ${formStatus===s?"act":""}" onclick="formStatus='${s}';rSP2()">${ST[s].l}</button>`).join("")}
-function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP");if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Выберите</div><div class="ppv">--</div>`;return}const n=daysN(document.getElementById("rStart").value,document.getElementById("rEnd").value);el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
+function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP");if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Выберите</div><div class="ppv">--</div>`;return}const n=daysN(document.getElementById("rStart").value,document.getElementById("rEnd").value);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;return}el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
 function checkOvl(){
   const did=document.getElementById("rDress").value,s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;
   const warn=document.getElementById("ovlWarn"),btn=document.getElementById("renSubBtn");
   if(!did||!s||!e){if(warn)warn.innerHTML="";return}
+  if(!isValidDateRange(s,e)){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Дата возврата должна быть позже или равна дате выдачи.</strong></div>`;btn.disabled=true;btn.style.opacity=".5";return}
   const conflicts=checkOverlap(did,s,e,editRental?editRental.id:null);
   if(conflicts.length){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Даты заняты!</strong><br>${conflicts.map(c=>`${c.clientName}: ${fmtD(c.startDate)} - ${fmtD(c.endDate)} (${ST[c.status].l})`).join("<br>")}</div>`;btn.disabled=true;btn.style.opacity=".5"}else{warn.innerHTML="";btn.disabled=false;btn.style.opacity="1"}
 }
 
 // 🔥 FIREBASE: Сохранение проката
-function subRen(){
-  const did=document.getElementById("rDress").value,cl=document.getElementById("rClient").value.trim();
+async function subRen(){
+  const did=document.getElementById("rDress").value,cl=safeLine(document.getElementById("rClient").value);
   if(!did){showToast("Выберите костюм!","error");return}if(!cl){showToast("Имя!","error");return}
   const s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value,d=gD(did);
+  if(!isValidDateRange(s,e)){showToast("Проверьте даты!","error");return}
   if(checkOverlap(did,s,e,editRental?editRental.id:null).length){showToast("Даты заняты другим клиентом!","error");return}
   const tot=daysN(s,e)*(d?d.price:0);
-  const obj={dressId:did,clientName:cl,clientPhone:document.getElementById("rPhone").value.trim(),startDate:s,endDate:e,status:formStatus,notes:document.getElementById("rNotes").value.trim(),totalPrice:tot};
-  if(editRental){Object.assign(editRental,obj);fbSaveRental(editRental);showToast("Обновлён!")}
-  else{obj.id=gid();rentals.push(obj);fbSaveRental(obj);if(d){d.rentCount=(d.rentCount||0)+1;fbSaveDress(d)}showToast("Создан!")}
+  const obj={dressId:did,clientName:cl,clientPhone:safePhone(document.getElementById("rPhone").value),startDate:s,endDate:e,status:formStatus,notes:safeMultiline(document.getElementById("rNotes").value),totalPrice:tot};
+  if(editRental){
+    const saved=await fbSaveRental({...editRental,...obj});
+    upsertLocalRental(saved);
+    showToast("Обновлён!");
+  }else{
+    const saved=await fbSaveRental({id:gid(),...obj});
+    upsertLocalRental(saved);
+    if(d){
+      const updatedDress=normalizeDress(d.id,{...d,rentCount:(d.rentCount||0)+1});
+      upsertLocalDress(updatedDress);
+      await fbSaveDress(updatedDress);
+    }
+    showToast("Создан!");
+  }
   closeModal();renderAll();
 }
 
@@ -394,27 +518,29 @@ function openBookM(id){
     <div class="fbtns"><button class="bcn" onclick="closeModal()">Отмена</button><button class="bsb" id="bookSubBtn" onclick="subBook('${d.id}')">Забронировать</button></div>`;
   uBP(d.id);checkBookOvl(d.id);
 }
-function uBP(id){const d=gD(id),el=document.getElementById("bookPP");if(!d||!el)return;const n=daysN(document.getElementById("bS").value,document.getElementById("bE").value);el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
+function uBP(id){const d=gD(id),el=document.getElementById("bookPP");if(!d||!el)return;const n=daysN(document.getElementById("bS").value,document.getElementById("bE").value);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;return}el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
 function checkBookOvl(dressId){
   const s=document.getElementById("bS").value,e=document.getElementById("bE").value;
   const warn=document.getElementById("bookOvlWarn"),btn=document.getElementById("bookSubBtn");
   if(!s||!e){if(warn)warn.innerHTML="";return}
+  if(!isValidDateRange(s,e)){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Дата возврата должна быть позже или равна дате получения.</strong></div>`;btn.disabled=true;btn.style.opacity=".5";return}
   const conflicts=checkOverlap(dressId,s,e,null);
   if(conflicts.length){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Эти даты уже заняты!</strong><br>${conflicts.map(c=>`${c.clientName}: ${fmtD(c.startDate)} - ${fmtD(c.endDate)}`).join("<br>")}<br>Выберите другие даты.</div>`;btn.disabled=true;btn.style.opacity=".5"}else{warn.innerHTML="";btn.disabled=false;btn.style.opacity="1"}
 }
 
 // 🔥 FIREBASE: Создание брони из каталога клиента
-function subBook(id){
-  const d=gD(id);if(!d)return;const nm=document.getElementById("bN").value.trim(),ph=document.getElementById("bPh").value.trim();
+async function subBook(id){
+  const d=gD(id);if(!d)return;const nm=safeLine(document.getElementById("bN").value),ph=safePhone(document.getElementById("bPh").value);
   if(!nm){showToast("Имя!","error");return}if(!ph){showToast("Телефон!","error");return}
   const s=document.getElementById("bS").value,e=document.getElementById("bE").value;
+  if(!isValidDateRange(s,e)){showToast("Проверьте даты!","error");return}
   if(checkOverlap(id,s,e,null).length){showToast("Даты заняты!","error");return}
   const tot=daysN(s,e)*d.price;
-  const newRental={id:gid(),dressId:id,clientName:nm,clientPhone:ph,startDate:s,endDate:e,status:"booked",notes:document.getElementById("bNotes").value.trim(),totalPrice:tot};
-  rentals.push(newRental);
-  d.rentCount=(d.rentCount||0)+1;
-  fbSaveRental(newRental);
-  fbSaveDress(d);
+  const newRental=await fbSaveRental({id:gid(),dressId:id,clientName:nm,clientPhone:ph,startDate:s,endDate:e,status:"booked",notes:safeMultiline(document.getElementById("bNotes").value),totalPrice:tot});
+  upsertLocalRental(newRental);
+  const updatedDress=normalizeDress(d.id,{...d,rentCount:(d.rentCount||0)+1});
+  upsertLocalDress(updatedDress);
+  await fbSaveDress(updatedDress);
   document.getElementById("moBody").innerHTML=`<div class="bsuc"><div class="bsuc-i">🎉</div><h3>Забронировано!</h3><p><strong>${d.name}</strong><br>${fmtD(s)} - ${fmtD(e)}<br>Итого: <strong>${fmt(tot)}</strong></p><button class="bsb" style="margin-top:16px;max-width:200px" onclick="closeModal()">OK</button></div>`;
   renderAll();
 }
@@ -530,9 +656,19 @@ function renderAll(){renderStats();renderNotifs();renderAlerts();if(curTab==="ca
 // ═══════════════════════════════════════
 async function startApp(){
   console.log("⏳ Загрузка данных из Firebase...");
-  await fbLoadAll();
-  initF();
-  renderAll();
+  try{
+    await ensureSeedData();
+    await startRealtimeSync();
+    initF();
+    appReady=true;
+    renderAll();
+  }catch(e){
+    console.error("❌ Firebase start error:",e);
+    initF();
+    appReady=true;
+    renderAll();
+    showToast("Ошибка подключения к Firebase","error");
+  }
   setTimeout(()=>{
     const ns=getNotifs();
     const ov=ns.filter(n=>n.type==="overdue"),ex=ns.filter(n=>n.type==="expiring");

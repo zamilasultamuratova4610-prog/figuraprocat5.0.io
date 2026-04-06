@@ -1,10 +1,11 @@
 const CACHE_NAME = 'figuraprokat-v3';
+const BASE_PATH = self.location.pathname.replace(/\/sw\.js$/, '');
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/css/style.css',
-  '/js/app.js',
-  '/manifest.json',
+  `${BASE_PATH}/`,
+  `${BASE_PATH}/index.html`,
+  `${BASE_PATH}/css/style.css`,
+  `${BASE_PATH}/js/app.js`,
+  `${BASE_PATH}/manifest.json`,
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
 ];
 
@@ -26,6 +27,6 @@ self.addEventListener('fetch', e => {
         caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
       }
       return res;
-    }).catch(() => caches.match('/index.html')))
+    }).catch(() => caches.match(`${BASE_PATH}/index.html`)))
   );
 });
