@@ -421,11 +421,19 @@ function openRenM(rid,did){
     </div>
     <div class="fg"><label class="fl">Заметки</label><textarea class="fta" id="rNotes" rows="2">${esc(r.notes||"")}</textarea></div>
     <div class="fbtns"><button class="bcn" onclick="closeModal()">Отмена</button><button class="bsb" id="renSubBtn" onclick="subRen()">${editRental?"Сохранить":"Создать"}</button></div>`;
+  const rTotalInput=document.getElementById("rTotal");
+  if(rTotalInput){
+    const label=rTotalInput.closest(".fg")?.querySelector(".fl");
+    if(label)label.textContent="\u0418\u0442\u043e\u0433\u043e\u0432\u0430\u044f \u0441\u0443\u043c\u043c\u0430 *";
+    const btn=rTotalInput.closest(".fgrid")?.querySelector("button");
+    if(btn)btn.textContent="\u041f\u043e\u0434\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0440\u0430\u0441\u0447\u0435\u0442";
+  }
   rSP2();uRP();checkOvl();
 }
 function rSP2(){const el=document.getElementById("rSP");if(!el)return;el.innerHTML=["booked","rented","returned"].map(s=>`<button class="spill ${formStatus===s?"act":""}" onclick="formStatus='${s}';rSP2()">${ST[s].l}</button>`).join("")}
 function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP");if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Выберите</div><div class="ppv">--</div>`;return}const n=daysN(document.getElementById("rStart").value,document.getElementById("rEnd").value);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;return}el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
 function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP"),s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Р’С‹Р±РµСЂРёС‚Рµ</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">РџСЂРѕРІРµСЂСЊС‚Рµ РґР°С‚С‹</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const suggested=calcSuggestedTotal(did,s,e);el.innerHTML=`<div class="ppl">${n} СЃСѓС‚ x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("rTotal",suggested)}
+function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP"),s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Выберите</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const suggested=calcSuggestedTotal(did,s,e);el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("rTotal",suggested)}
 function checkOvl(){
   const did=document.getElementById("rDress").value,s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;
   const warn=document.getElementById("ovlWarn"),btn=document.getElementById("renSubBtn");
@@ -556,10 +564,18 @@ function openBookM(id){
     </div>
     <div class="fg"><label class="fl">Примечание</label><textarea class="fta" id="bNotes" rows="2"></textarea></div>
     <div class="fbtns"><button class="bcn" onclick="closeModal()">Отмена</button><button class="bsb" id="bookSubBtn" onclick="subBook('${d.id}')">Забронировать</button></div>`;
+  const bTotalInput=document.getElementById("bTotal");
+  if(bTotalInput){
+    const label=bTotalInput.closest(".fg")?.querySelector(".fl");
+    if(label)label.textContent="\u0418\u0442\u043e\u0433\u043e\u0432\u0430\u044f \u0441\u0443\u043c\u043c\u0430 *";
+    const btn=bTotalInput.closest(".fgrid")?.querySelector("button");
+    if(btn)btn.textContent="\u041f\u043e\u0434\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0440\u0430\u0441\u0447\u0435\u0442";
+  }
   uBP(d.id);checkBookOvl(d.id);
 }
 function uBP(id){const d=gD(id),el=document.getElementById("bookPP");if(!d||!el)return;const n=daysN(document.getElementById("bS").value,document.getElementById("bE").value);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;return}el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
 function uBP(id){const d=gD(id),el=document.getElementById("bookPP"),s=document.getElementById("bS").value,e=document.getElementById("bE").value;if(!d||!el)return;const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">РџСЂРѕРІРµСЂСЊС‚Рµ РґР°С‚С‹</div><div class="ppv">--</div>`;syncTotalInput("bTotal",0);return}const suggested=calcSuggestedTotal(id,s,e);el.innerHTML=`<div class="ppl">${n} СЃСѓС‚ x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("bTotal",suggested)}
+function uBP(id){const d=gD(id),el=document.getElementById("bookPP"),s=document.getElementById("bS").value,e=document.getElementById("bE").value;if(!d||!el)return;const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;syncTotalInput("bTotal",0);return}const suggested=calcSuggestedTotal(id,s,e);el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("bTotal",suggested)}
 function checkBookOvl(dressId){
   const s=document.getElementById("bS").value,e=document.getElementById("bE").value;
   const warn=document.getElementById("bookOvlWarn"),btn=document.getElementById("bookSubBtn");
