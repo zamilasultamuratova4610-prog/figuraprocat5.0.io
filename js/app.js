@@ -187,6 +187,37 @@ function checkOverlap(dressId,startDate,endDate,excludeRentalId){
 function getDressBookings(dressId){
   return rentals.filter(r=>r.dressId===dressId&&r.status!=="returned").map(r=>({start:r.startDate,end:r.endDate,status:r.status,client:r.clientName}));
 }
+function calcSuggestedTotal(dressId,startDate,endDate){
+  const dress=gD(dressId),days=daysN(startDate,endDate);
+  if(!dress||days<1)return 0;
+  return Math.max(0,days*toNum(dress.price,0));
+}
+function markTotalManual(inputId){
+  const el=document.getElementById(inputId);
+  if(el)el.dataset.manual="1";
+}
+function syncTotalInput(inputId,suggested){
+  const el=document.getElementById(inputId);
+  if(!el)return;
+  const safeSuggested=Math.max(0,toNum(suggested,0));
+  const prevSuggested=toNum(el.dataset.suggested,NaN);
+  const current=toNum(el.value,NaN);
+  const shouldAutofill=!el.value||el.dataset.manual!=="1"||(!Number.isNaN(prevSuggested)&&current===prevSuggested);
+  if(shouldAutofill){
+    el.value=String(safeSuggested);
+    el.dataset.manual="0";
+  }
+  el.dataset.suggested=String(safeSuggested);
+}
+function applySuggestedTotal(inputId){
+  const el=document.getElementById(inputId);
+  if(!el)return;
+  el.value=el.dataset.suggested||"0";
+  el.dataset.manual="0";
+}
+function readTotalInput(inputId){
+  return Math.max(0,toNum(document.getElementById(inputId)?.value,0));
+}
 function getImgDims(src){return new Promise(res=>{const img=new Image();img.onload=()=>res({w:img.naturalWidth,h:img.naturalHeight});img.onerror=()=>res({w:1,h:1});img.src=src})}
 function fitInBox(imgW,imgH,boxW,boxH){const ir=imgW/imgH,br=boxW/boxH;let w,h;if(ir>br){w=boxW;h=boxW/ir}else{h=boxH;w=boxH*ir}return{x:(boxW-w)/2,y:(boxH-h)/2,w,h}}
 
@@ -375,7 +406,7 @@ function openRenM(rid,did){
   editRental=rid?rentals.find(r=>r.id===rid):null;formStatus=editRental?editRental.status:"booked";
   document.getElementById("moTitle").textContent=editRental?"Редактировать":"Новый прокат";
   document.getElementById("moBox").classList.remove("wide");document.getElementById("mov").style.display="flex";
-  const r=editRental||{},sd=did||r.dressId||"";
+  const r=editRental||{},sd=did||r.dressId||"",startDate=r.startDate||today(),endDate=r.endDate||addD(3),suggestedTotal=calcSuggestedTotal(sd,startDate,endDate),totalValue=editRental?toNum(r.totalPrice,suggestedTotal):suggestedTotal;
   document.getElementById("moBody").innerHTML=`
     <div class="fg"><label class="fl">Костюм *</label><select class="fse" id="rDress" onchange="uRP();checkOvl()"><option value="">--</option>${dresses.map(d=>`<option value="${d.id}" ${d.id===sd?"selected":""}>${d.name} (${d.size})</option>`).join("")}</select></div>
     <div class="fg"><label class="fl">Клиент *</label><input class="fi" id="rClient" value="${escAttr(r.clientName||"")}"></div>
@@ -384,12 +415,17 @@ function openRenM(rid,did){
     <div id="ovlWarn"></div>
     <div class="fg"><label class="fl">Статус</label><div class="spills" id="rSP"></div></div>
     <div class="pp" id="renPP"></div>
+    <div class="fgrid">
+      <div class="fg"><label class="fl">РС‚РѕРіРѕРІР°СЏ СЃСѓРјРјР° *</label><input class="fi" type="number" min="0" step="1" id="rTotal" value="${totalValue}" data-manual="${editRental?"1":"0"}" oninput="markTotalManual('rTotal')"></div>
+      <div class="fg" style="display:flex;align-items:flex-end"><button class="spill" type="button" style="width:100%" onclick="applySuggestedTotal('rTotal')">РџРѕРґСЃС‚Р°РІРёС‚СЊ СЂР°СЃС‡С‘С‚</button></div>
+    </div>
     <div class="fg"><label class="fl">Заметки</label><textarea class="fta" id="rNotes" rows="2">${esc(r.notes||"")}</textarea></div>
     <div class="fbtns"><button class="bcn" onclick="closeModal()">Отмена</button><button class="bsb" id="renSubBtn" onclick="subRen()">${editRental?"Сохранить":"Создать"}</button></div>`;
   rSP2();uRP();checkOvl();
 }
 function rSP2(){const el=document.getElementById("rSP");if(!el)return;el.innerHTML=["booked","rented","returned"].map(s=>`<button class="spill ${formStatus===s?"act":""}" onclick="formStatus='${s}';rSP2()">${ST[s].l}</button>`).join("")}
 function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP");if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Выберите</div><div class="ppv">--</div>`;return}const n=daysN(document.getElementById("rStart").value,document.getElementById("rEnd").value);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;return}el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
+function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP"),s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Р’С‹Р±РµСЂРёС‚Рµ</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">РџСЂРѕРІРµСЂСЊС‚Рµ РґР°С‚С‹</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const suggested=calcSuggestedTotal(did,s,e);el.innerHTML=`<div class="ppl">${n} СЃСѓС‚ x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("rTotal",suggested)}
 function checkOvl(){
   const did=document.getElementById("rDress").value,s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;
   const warn=document.getElementById("ovlWarn"),btn=document.getElementById("renSubBtn");
@@ -406,7 +442,7 @@ async function subRen(){
   const s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value,d=gD(did);
   if(!isValidDateRange(s,e)){showToast("Проверьте даты!","error");return}
   if(checkOverlap(did,s,e,editRental?editRental.id:null).length){showToast("Даты заняты другим клиентом!","error");return}
-  const tot=daysN(s,e)*(d?d.price:0);
+  const tot=readTotalInput("rTotal");
   const obj={dressId:did,clientName:cl,clientPhone:safePhone(document.getElementById("rPhone").value),startDate:s,endDate:e,status:formStatus,notes:safeMultiline(document.getElementById("rNotes").value),totalPrice:tot};
   if(editRental){
     const saved=await fbSaveRental({...editRental,...obj});
@@ -514,11 +550,16 @@ function openBookM(id){
     <div class="fgrid"><div class="fg"><label class="fl">Получение</label><input class="fi" type="date" id="bS" value="${today()}" onchange="uBP('${d.id}');checkBookOvl('${d.id}')"></div><div class="fg"><label class="fl">Возврат</label><input class="fi" type="date" id="bE" value="${addD(3)}" onchange="uBP('${d.id}');checkBookOvl('${d.id}')"></div></div>
     <div id="bookOvlWarn"></div>
     <div class="pp" id="bookPP"></div>
+    <div class="fgrid">
+      <div class="fg"><label class="fl">РС‚РѕРіРѕРІР°СЏ СЃСѓРјРјР° *</label><input class="fi" type="number" min="0" step="1" id="bTotal" value="" data-manual="0" oninput="markTotalManual('bTotal')"></div>
+      <div class="fg" style="display:flex;align-items:flex-end"><button class="spill" type="button" style="width:100%" onclick="applySuggestedTotal('bTotal')">РџРѕРґСЃС‚Р°РІРёС‚СЊ СЂР°СЃС‡С‘С‚</button></div>
+    </div>
     <div class="fg"><label class="fl">Примечание</label><textarea class="fta" id="bNotes" rows="2"></textarea></div>
     <div class="fbtns"><button class="bcn" onclick="closeModal()">Отмена</button><button class="bsb" id="bookSubBtn" onclick="subBook('${d.id}')">Забронировать</button></div>`;
   uBP(d.id);checkBookOvl(d.id);
 }
 function uBP(id){const d=gD(id),el=document.getElementById("bookPP");if(!d||!el)return;const n=daysN(document.getElementById("bS").value,document.getElementById("bE").value);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;return}el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
+function uBP(id){const d=gD(id),el=document.getElementById("bookPP"),s=document.getElementById("bS").value,e=document.getElementById("bE").value;if(!d||!el)return;const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">РџСЂРѕРІРµСЂСЊС‚Рµ РґР°С‚С‹</div><div class="ppv">--</div>`;syncTotalInput("bTotal",0);return}const suggested=calcSuggestedTotal(id,s,e);el.innerHTML=`<div class="ppl">${n} СЃСѓС‚ x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("bTotal",suggested)}
 function checkBookOvl(dressId){
   const s=document.getElementById("bS").value,e=document.getElementById("bE").value;
   const warn=document.getElementById("bookOvlWarn"),btn=document.getElementById("bookSubBtn");
@@ -535,7 +576,7 @@ async function subBook(id){
   const s=document.getElementById("bS").value,e=document.getElementById("bE").value;
   if(!isValidDateRange(s,e)){showToast("Проверьте даты!","error");return}
   if(checkOverlap(id,s,e,null).length){showToast("Даты заняты!","error");return}
-  const tot=daysN(s,e)*d.price;
+  const tot=readTotalInput("bTotal");
   const newRental=await fbSaveRental({id:gid(),dressId:id,clientName:nm,clientPhone:ph,startDate:s,endDate:e,status:"booked",notes:safeMultiline(document.getElementById("bNotes").value),totalPrice:tot});
   upsertLocalRental(newRental);
   const updatedDress=normalizeDress(d.id,{...d,rentCount:(d.rentCount||0)+1});
