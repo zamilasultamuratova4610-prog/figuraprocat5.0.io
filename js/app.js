@@ -142,10 +142,6 @@ function fbDeleteRental(id){
 }
 
 async function ensureSeedData(){
-  const dSnap=await db.collection('fp_dresses').get();
-  if(dSnap.empty)await Promise.all(DEFAULT_DRESSES.map(d=>fbSaveDress(d)));
-  const rSnap=await db.collection('fp_rentals').get();
-  if(rSnap.empty)await Promise.all(DEFAULT_RENTALS.map(r=>fbSaveRental(r)));
   const sDoc=await db.collection('fp_settings').doc('sizes').get();
   if(!sDoc.exists)await saveSizes();
 }
