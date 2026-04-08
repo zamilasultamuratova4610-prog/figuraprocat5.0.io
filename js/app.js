@@ -88,25 +88,6 @@ function refreshVisibleDresses(){dresses=allDresses.filter(d=>!d.isDraft)}
 function upsertLocalDress(d){const idx=allDresses.findIndex(x=>x.id===d.id);if(idx>=0)allDresses.splice(idx,1,d);else allDresses.push(d);refreshVisibleDresses()}
 function upsertLocalRental(r){const idx=rentals.findIndex(x=>x.id===r.id);if(idx>=0)rentals.splice(idx,1,r);else rentals.push(r)}
 
-// ── DEFAULT DATA (для первого запуска) ──
-const DEFAULT_DRESSES=[
-  {id:"c1",name:"Снежинка",category:"Детский",size:"122-128",material:"Лайкра",decoration:"Термостразы",style:"Лирика",price:12000,deposit:20000,description:"Нежное белоснежное платье с серебристыми кристаллами.",photos:[],rating:5,rentCount:18},
-  {id:"c2",name:"Огонь льда",category:"Юниорский",size:"146-152",material:"Бифлекс",decoration:"Стразы Swarovski",style:"Характерный",price:18000,deposit:35000,description:"Ярко-красный костюм с золотыми стразами.",photos:[],rating:5,rentCount:12},
-  {id:"c3",name:"Лебединое озеро",category:"Взрослый",size:"S (44)",material:"Комбинированный",decoration:"Перья",style:"Классика",price:35000,deposit:60000,description:"Классический белый костюм с перьями.",photos:[],rating:5,rentCount:9},
-  {id:"c4",name:"Звёздная ночь",category:"Взрослый",size:"M (46)",material:"Лайкра",decoration:"Стразы Swarovski",style:"Произвольная",price:28000,deposit:50000,description:"Тёмно-синий костюм со стразами.",photos:[],rating:4,rentCount:15},
-  {id:"c5",name:"Маленькая принцесса",category:"Детский",size:"110-116",material:"Бифлекс",decoration:"Паетки",style:"Лирика",price:9000,deposit:15000,description:"Розовое платье с паетками.",photos:[],rating:5,rentCount:22},
-  {id:"c6",name:"Фламенко",category:"Взрослый",size:"S (44)",material:"Бархат",decoration:"Вышивка",style:"Характерный",price:32000,deposit:55000,description:"Бордовый костюм с вышивкой.",photos:[],rating:4,rentCount:7},
-  {id:"c7",name:"Ледяная королева",category:"Юниорский",size:"158-164",material:"Комбинированный",decoration:"Стразы Swarovski",style:"Произвольная",price:22000,deposit:40000,description:"Голубой костюм с серебристыми стразами.",photos:[],rating:5,rentCount:11},
-  {id:"c8",name:"Джаз на льду",category:"Взрослый",size:"XS (42)",material:"Лайкра",decoration:"Паетки",style:"Джаз",price:24000,deposit:42000,description:"Чёрный костюм с золотыми паетками.",photos:[],rating:4,rentCount:6}
-];
-const DEFAULT_RENTALS=[
-  {id:"r1",dressId:"c1",clientName:"Алина Захарова",clientPhone:"+7(701)123-45-67",startDate:addD(-5),endDate:addD(-1),status:"rented",notes:"Соревнования",totalPrice:48000},
-  {id:"r2",dressId:"c2",clientName:"Диана Нурова",clientPhone:"+7(702)234-56-78",startDate:addD(0),endDate:addD(1),status:"rented",notes:"Чемпионат",totalPrice:36000},
-  {id:"r3",dressId:"c3",clientName:"Карина Белова",clientPhone:"+7(705)345-67-89",startDate:addD(-15),endDate:addD(-12),status:"returned",notes:"",totalPrice:105000},
-  {id:"r4",dressId:"c5",clientName:"Зоя Смирнова",clientPhone:"+7(707)456-78-90",startDate:addD(5),endDate:addD(9),status:"booked",notes:"День рождения",totalPrice:36000},
-  {id:"r5",dressId:"c7",clientName:"Лина Касымова",clientPhone:"+7(708)567-89-01",startDate:addD(-1),endDate:addD(0),status:"rented",notes:"Турнир",totalPrice:44000}
-];
-
 // ── STATE ──
 let allDresses=[];
 let dresses=[];
