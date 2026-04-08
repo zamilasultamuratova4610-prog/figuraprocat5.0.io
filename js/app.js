@@ -209,18 +209,35 @@ async function startRealtimeSync(){
   console.log("✅ Firebase: загружено",dresses.length,"платьев,",rentals.length,"прокатов");
 }
 
-const gDS=id=>{const r=rentals.find(r=>r.dressId===id&&r.status!=="returned");return r?r.status:"available"};
-const gAR=id=>rentals.find(r=>r.dressId===id&&r.status!=="returned");
+const ACTIVE_RENTAL_STATUSES=["booked","rented"];
+const isActiveRental=r=>Boolean(r&&ACTIVE_RENTAL_STATUSES.includes(r.status));
+function getDressActiveRentals(dressId){
+  const safeDressId=safeLine(dressId);
+  if(!safeDressId)return[];
+  return rentals
+    .filter(r=>r.dressId===safeDressId&&isActiveRental(r))
+    .sort((a,b)=>new Date(a.startDate)-new Date(b.startDate));
+}
+function getDressTimelineRental(dressId,refDate=today()){
+  const active=getDressActiveRentals(dressId);
+  if(!active.length)return null;
+  return active.find(r=>r.startDate<=refDate&&r.endDate>=refDate)||active[0];
+}
+const gDS=id=>{const r=getDressTimelineRental(id);return r?r.status:"available"};
+const gAR=id=>getDressTimelineRental(id);
 const gD=id=>allDresses.find(d=>d.id===id);
 const stars=(r,n=5)=>[...Array(n)].map((_,i)=>`<span style="color:${i<r?"#fbbf24":"var(--g200)"}">★</span>`).join("");
 function compImg(file){return new Promise(res=>{const r=new FileReader();r.onload=e=>{const img=new Image();img.onload=()=>{const c=document.createElement("canvas");let w=img.width,h=img.height;if(w>600){h=h*600/w;w=600}c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);res(c.toDataURL("image/jpeg",.75))};img.src=e.target.result};r.readAsDataURL(file)})}
 function checkOverlap(dressId,startDate,endDate,excludeRentalId){
   if(!isValidDateRange(startDate,endDate))return[];
   const start=new Date(startDate),end=new Date(endDate);
-  return rentals.filter(r=>{if(r.dressId!==dressId)return false;if(r.status==="returned")return false;if(excludeRentalId&&r.id===excludeRentalId)return false;return start<=new Date(r.endDate)&&end>=new Date(r.startDate)});
+  return getDressActiveRentals(dressId).filter(r=>{
+    if(excludeRentalId&&r.id===excludeRentalId)return false;
+    return start<=new Date(r.endDate)&&end>=new Date(r.startDate);
+  });
 }
 function getDressBookings(dressId){
-  return rentals.filter(r=>r.dressId===dressId&&r.status!=="returned").map(r=>({start:r.startDate,end:r.endDate,status:r.status,client:r.clientName}));
+  return getDressActiveRentals(dressId).map(r=>({start:r.startDate,end:r.endDate,status:r.status,client:r.clientName}));
 }
 function calcSuggestedTotal(dressId,startDate,endDate){
   const dress=gD(dressId),days=daysN(startDate,endDate);
@@ -466,25 +483,31 @@ function openRenM(rid,did){
   rSP2();uRP();checkOvl();
 }
 function rSP2(){const el=document.getElementById("rSP");if(!el)return;el.innerHTML=["booked","rented","returned"].map(s=>`<button class="spill ${formStatus===s?"act":""}" onclick="formStatus='${s}';rSP2()">${ST[s].l}</button>`).join("")}
-function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP");if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Выберите</div><div class="ppv">--</div>`;return}const n=daysN(document.getElementById("rStart").value,document.getElementById("rEnd").value);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;return}el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
-function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP"),s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Р’С‹Р±РµСЂРёС‚Рµ</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">РџСЂРѕРІРµСЂСЊС‚Рµ РґР°С‚С‹</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const suggested=calcSuggestedTotal(did,s,e);el.innerHTML=`<div class="ppl">${n} СЃСѓС‚ x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("rTotal",suggested)}
-function uRP(){const did=document.getElementById("rDress").value,d=gD(did),el=document.getElementById("renPP"),s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Выберите</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}const suggested=calcSuggestedTotal(did,s,e);el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("rTotal",suggested)}
+function uRP(){
+  const did=safeLine(document.getElementById("rDress").value),d=gD(did),el=document.getElementById("renPP"),s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;
+  if(!d||!el){if(el)el.innerHTML=`<div class="ppl">Выберите</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}
+  const n=daysN(s,e);
+  if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;syncTotalInput("rTotal",0);return}
+  const suggested=calcSuggestedTotal(did,s,e);
+  el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;
+  syncTotalInput("rTotal",suggested);
+}
 function checkOvl(){
-  const did=document.getElementById("rDress").value,s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;
+  const did=safeLine(document.getElementById("rDress").value),s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value;
   const warn=document.getElementById("ovlWarn"),btn=document.getElementById("renSubBtn");
   if(!did||!s||!e){if(warn)warn.innerHTML="";return}
   if(!isValidDateRange(s,e)){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Дата возврата должна быть позже или равна дате выдачи.</strong></div>`;btn.disabled=true;btn.style.opacity=".5";return}
   const conflicts=checkOverlap(did,s,e,editRental?editRental.id:null);
-  if(conflicts.length){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Даты заняты!</strong><br>${conflicts.map(c=>`${c.clientName}: ${fmtD(c.startDate)} - ${fmtD(c.endDate)} (${ST[c.status].l})`).join("<br>")}</div>`;btn.disabled=true;btn.style.opacity=".5"}else{warn.innerHTML="";btn.disabled=false;btn.style.opacity="1"}
+  if(conflicts.length){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Это платье уже занято в выбранные даты.</strong><br>${conflicts.map(c=>`${c.clientName}: ${fmtD(c.startDate)} - ${fmtD(c.endDate)} (${ST[c.status].l})`).join("<br>")}</div>`;btn.disabled=true;btn.style.opacity=".5"}else{warn.innerHTML="";btn.disabled=false;btn.style.opacity="1"}
 }
 
 // 🔥 FIREBASE: Сохранение проката
 async function subRen(){
-  const did=document.getElementById("rDress").value,cl=safeLine(document.getElementById("rClient").value);
+  const did=safeLine(document.getElementById("rDress").value),cl=safeLine(document.getElementById("rClient").value);
   if(!did){showToast("Выберите костюм!","error");return}if(!cl){showToast("Имя!","error");return}
   const s=document.getElementById("rStart").value,e=document.getElementById("rEnd").value,d=gD(did);
   if(!isValidDateRange(s,e)){showToast("Проверьте даты!","error");return}
-  if(checkOverlap(did,s,e,editRental?editRental.id:null).length){showToast("Даты заняты другим клиентом!","error");return}
+  if(checkOverlap(did,s,e,editRental?editRental.id:null).length){showToast("Это платье уже занято на выбранные даты!","error");return}
   const tot=readTotalInput("rTotal");
   const obj={dressId:did,clientName:cl,clientPhone:safePhone(document.getElementById("rPhone").value),startDate:s,endDate:e,status:formStatus,notes:safeMultiline(document.getElementById("rNotes").value),totalPrice:tot};
   if(editRental){
@@ -608,16 +631,22 @@ function openBookM(id){
   }
   uBP(d.id);checkBookOvl(d.id);
 }
-function uBP(id){const d=gD(id),el=document.getElementById("bookPP");if(!d||!el)return;const n=daysN(document.getElementById("bS").value,document.getElementById("bE").value);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;return}el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(n*d.price)}</div>`}
-function uBP(id){const d=gD(id),el=document.getElementById("bookPP"),s=document.getElementById("bS").value,e=document.getElementById("bE").value;if(!d||!el)return;const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">РџСЂРѕРІРµСЂСЊС‚Рµ РґР°С‚С‹</div><div class="ppv">--</div>`;syncTotalInput("bTotal",0);return}const suggested=calcSuggestedTotal(id,s,e);el.innerHTML=`<div class="ppl">${n} СЃСѓС‚ x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("bTotal",suggested)}
-function uBP(id){const d=gD(id),el=document.getElementById("bookPP"),s=document.getElementById("bS").value,e=document.getElementById("bE").value;if(!d||!el)return;const n=daysN(s,e);if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;syncTotalInput("bTotal",0);return}const suggested=calcSuggestedTotal(id,s,e);el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;syncTotalInput("bTotal",suggested)}
+function uBP(id){
+  const d=gD(id),el=document.getElementById("bookPP"),s=document.getElementById("bS").value,e=document.getElementById("bE").value;
+  if(!d||!el)return;
+  const n=daysN(s,e);
+  if(n<1){el.innerHTML=`<div class="ppl">Проверьте даты</div><div class="ppv">--</div>`;syncTotalInput("bTotal",0);return}
+  const suggested=calcSuggestedTotal(id,s,e);
+  el.innerHTML=`<div class="ppl">${n} сут x ${fmt(d.price)}</div><div class="ppv">${fmt(suggested)}</div>`;
+  syncTotalInput("bTotal",suggested);
+}
 function checkBookOvl(dressId){
   const s=document.getElementById("bS").value,e=document.getElementById("bE").value;
   const warn=document.getElementById("bookOvlWarn"),btn=document.getElementById("bookSubBtn");
   if(!s||!e){if(warn)warn.innerHTML="";return}
   if(!isValidDateRange(s,e)){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Дата возврата должна быть позже или равна дате получения.</strong></div>`;btn.disabled=true;btn.style.opacity=".5";return}
   const conflicts=checkOverlap(dressId,s,e,null);
-  if(conflicts.length){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Эти даты уже заняты!</strong><br>${conflicts.map(c=>`${c.clientName}: ${fmtD(c.startDate)} - ${fmtD(c.endDate)}`).join("<br>")}<br>Выберите другие даты.</div>`;btn.disabled=true;btn.style.opacity=".5"}else{warn.innerHTML="";btn.disabled=false;btn.style.opacity="1"}
+  if(conflicts.length){warn.innerHTML=`<div class="overlap-warn">⚠️ <strong>Это платье уже занято в выбранные даты.</strong><br>${conflicts.map(c=>`${c.clientName}: ${fmtD(c.startDate)} - ${fmtD(c.endDate)}`).join("<br>")}<br>Выберите другие даты для этого платья.</div>`;btn.disabled=true;btn.style.opacity=".5"}else{warn.innerHTML="";btn.disabled=false;btn.style.opacity="1"}
 }
 
 // 🔥 FIREBASE: Создание брони из каталога клиента
@@ -626,7 +655,7 @@ async function subBook(id){
   if(!nm){showToast("Имя!","error");return}if(!ph){showToast("Телефон!","error");return}
   const s=document.getElementById("bS").value,e=document.getElementById("bE").value;
   if(!isValidDateRange(s,e)){showToast("Проверьте даты!","error");return}
-  if(checkOverlap(id,s,e,null).length){showToast("Даты заняты!","error");return}
+  if(checkOverlap(id,s,e,null).length){showToast("Это платье уже занято на выбранные даты!","error");return}
   const tot=readTotalInput("bTotal");
   const newRental=await fbSaveRental({id:gid(),dressId:id,clientName:nm,clientPhone:ph,startDate:s,endDate:e,status:"booked",notes:safeMultiline(document.getElementById("bNotes").value),totalPrice:tot});
   upsertLocalRental(newRental);
