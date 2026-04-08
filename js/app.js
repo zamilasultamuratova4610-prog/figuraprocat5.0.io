@@ -85,8 +85,8 @@ function normalizeRental(id,data={}){
   };
 }
 function refreshVisibleDresses(){dresses=allDresses.filter(d=>!d.isDraft)}
-function upsertLocalDress(d){const idx=allDresses.findIndex(x=>x.id===d.id);if(idx>=0)allDresses.splice(idx,1,d);else allDresses.push(d);refreshVisibleDresses()}
-function upsertLocalRental(r){const idx=rentals.findIndex(x=>x.id===r.id);if(idx>=0)rentals.splice(idx,1,r);else rentals.push(r)}
+function upsertLocalDress(d){const idx=allDresses.findIndex(x=>x.id===d.id);if(idx>=0)allDresses.splice(idx,1,d);else allDresses.push(d);refreshVisibleDresses();persistLocalState()}
+function upsertLocalRental(r){const idx=rentals.findIndex(x=>x.id===r.id);if(idx>=0)rentals.splice(idx,1,r);else rentals.push(r);persistLocalState()}
 
 // ── STATE ──
 let allDresses=[];
@@ -96,12 +96,35 @@ let curTab="catalog",calY=new Date().getFullYear(),calM=new Date().getMonth(),ca
 let renFil="all",editDress=null,editRental=null,detPhIdx=0,formPhotos=[],formStatus="booked";
 let clStatFil="all",dismissedN=new Set();
 let appReady=false,dressDraftId=null,dressDraftTouched=false,dressAutosaveTimer=null,dressSaveSeq=0,initialDataSource="server";
+const LOCAL_CACHE_KEY="fp_state_cache_v1";
 
 function setBootState(state,message){
   const boot=document.getElementById("appBoot");
   const bootText=document.getElementById("appBootText");
   if(bootText&&message)bootText.textContent=message;
-  if(boot)boot.classList.toggle("hidden",state==="ready");
+  if(boot)boot.classList.add("hidden");
+}
+function persistLocalState(){
+  try{
+    localStorage.setItem(LOCAL_CACHE_KEY,JSON.stringify({allDresses,rentals,customSizes,savedAt:Date.now()}));
+  }catch(e){
+    console.warn("Local cache save err:",e);
+  }
+}
+function restoreLocalState(){
+  try{
+    const raw=localStorage.getItem(LOCAL_CACHE_KEY);
+    if(!raw)return false;
+    const cached=JSON.parse(raw);
+    allDresses=(Array.isArray(cached.allDresses)?cached.allDresses:[]).map(d=>normalizeDress(d.id,d));
+    refreshVisibleDresses();
+    rentals=(Array.isArray(cached.rentals)?cached.rentals:[]).map(r=>normalizeRental(r.id,r)).filter(r=>r.dressId);
+    customSizes=sanitizeSizeList(Array.isArray(cached.customSizes)?cached.customSizes:DEF_SIZES);
+    return allDresses.length>0||rentals.length>0||Array.isArray(cached.customSizes);
+  }catch(e){
+    console.warn("Local cache restore err:",e);
+    return false;
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -130,7 +153,6 @@ function watchFirestore(ref,handler,label){
   return new Promise((resolve,reject)=>{
     let first=true;
     const unsub=ref.onSnapshot({includeMetadataChanges:true},snap=>{
-      if(first&&initialDataSource==="server"&&snap.metadata.fromCache)return;
       handler(snap);
       if(first){first=false;resolve(unsub)}
     },e=>{
@@ -145,42 +167,42 @@ function applyRemoteState(dSnap,rSnap,sDoc){
   refreshVisibleDresses();
   rentals=rSnap.docs.map(doc=>normalizeRental(doc.id,doc.data())).filter(r=>r.dressId);
   customSizes=sanitizeSizeList(sDoc.exists&&sDoc.data()?.list?sDoc.data().list:DEF_SIZES);
+  persistLocalState();
 }
 async function loadInitialData(){
+  let source=restoreLocalState()?"local":"empty";
   try{
     const[dSnap,rSnap,sDoc]=await Promise.all([
-      db.collection('fp_dresses').get({source:"server"}),
-      db.collection('fp_rentals').get({source:"server"}),
-      db.collection('fp_settings').doc('sizes').get({source:"server"})
+      db.collection('fp_dresses').get({source:"cache"}),
+      db.collection('fp_rentals').get({source:"cache"}),
+      db.collection('fp_settings').doc('sizes').get({source:"cache"})
     ]);
-    initialDataSource="server";
-    applyRemoteState(dSnap,rSnap,sDoc);
-    return"server";
+    if(dSnap.docs.length||rSnap.docs.length||sDoc.exists){
+      initialDataSource="cache";
+      applyRemoteState(dSnap,rSnap,sDoc);
+      source="cache";
+    }
   }catch(e){
-    console.warn("Server preload failed, fallback to cache",e);
-    const[dSnap,rSnap,sDoc]=await Promise.all([
-      db.collection('fp_dresses').get(),
-      db.collection('fp_rentals').get(),
-      db.collection('fp_settings').doc('sizes').get()
-    ]);
-    initialDataSource="cache";
-    applyRemoteState(dSnap,rSnap,sDoc);
-    return"cache";
+    console.warn("Cache preload unavailable",e);
   }
+  return source;
 }
 async function startRealtimeSync(){
   await Promise.all([
     watchFirestore(db.collection('fp_dresses'),snap=>{
       allDresses=snap.docs.map(doc=>normalizeDress(doc.id,doc.data()));
       refreshVisibleDresses();
+      persistLocalState();
       if(appReady)renderAll();
     },"каталог"),
     watchFirestore(db.collection('fp_rentals'),snap=>{
       rentals=snap.docs.map(doc=>normalizeRental(doc.id,doc.data())).filter(r=>r.dressId);
+      persistLocalState();
       if(appReady)renderAll();
     },"прокаты"),
     watchFirestore(db.collection('fp_settings').doc('sizes'),snap=>{
       customSizes=sanitizeSizeList(snap.exists&&snap.data()?.list?snap.data().list:DEF_SIZES);
+      persistLocalState();
       if(appReady){initF();renderAll();}
     },"размеры")
   ]);
@@ -297,9 +319,9 @@ function renderSizesBody(){
     <div class="sz-add-row"><input class="sz-inp" id="newSizeInp" placeholder="Новый размер, напр: 170-176" onkeydown="if(event.key==='Enter')addSizeItem()"><button class="sz-add-btn" onclick="addSizeItem()">+ Добавить</button></div>
     <div class="fbtns" style="margin-top:24px"><button class="bcn" onclick="closeModal()">Закрыть</button><button class="bsb" onclick="resetSizesToDef()">↺ Сбросить</button></div>`;
 }
-function addSizeItem(){const v=document.getElementById("newSizeInp").value.trim();if(!v){showToast("Введите размер","error");return}if(customSizes.includes(v)){showToast("Уже есть","warn");return}customSizes.push(v);saveSizes();initF();renderSizesBody();showToast("Размер добавлен!")}
-function rmSizeItem(i){customSizes.splice(i,1);saveSizes();initF();renderSizesBody();showToast("Удалён","info")}
-function resetSizesToDef(){customSizes=[...DEF_SIZES];saveSizes();initF();renderSizesBody();showToast("Сброшено к стандартным")}
+function addSizeItem(){const v=document.getElementById("newSizeInp").value.trim();if(!v){showToast("Введите размер","error");return}if(customSizes.includes(v)){showToast("Уже есть","warn");return}customSizes.push(v);persistLocalState();saveSizes();initF();renderSizesBody();showToast("Размер добавлен!")}
+function rmSizeItem(i){customSizes.splice(i,1);persistLocalState();saveSizes();initF();renderSizesBody();showToast("Удалён","info")}
+function resetSizesToDef(){customSizes=[...DEF_SIZES];persistLocalState();saveSizes();initF();renderSizesBody();showToast("Сброшено к стандартным")}
 
 // ── CATALOG ──
 function getAlert(did){const r=gAR(did);if(!r||r.status!=="rented")return null;const d=diffD(today(),r.endDate);return d<0?"overdue":d<=1?"expiring":null}
@@ -727,14 +749,15 @@ function renderAll(){renderStats();renderNotifs();renderAlerts();if(curTab==="ca
 async function startApp(){
   console.log("⏳ Загрузка данных из Firebase...");
   try{
-    await ensureSeedData();
     const source=await loadInitialData();
     initF();
     appReady=true;
     renderAll();
     setBootState("ready");
+    await(window.dbReadyPromise||Promise.resolve());
+    ensureSeedData().catch(e=>console.error("Settings seed err:",e));
     startRealtimeSync().catch(e=>console.error("Realtime sync start error:",e));
-    if(source==="cache")showToast("Нет связи с сервером. Показаны локальные данные.","warn");
+    if(source==="local")console.log("⚡ Загружено из локального кэша");
   }catch(e){
     console.error("❌ Firebase start error:",e);
     initF();
