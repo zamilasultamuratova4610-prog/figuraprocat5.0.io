@@ -108,13 +108,20 @@ const DEFAULT_RENTALS=[
 ];
 
 // ── STATE ──
-let allDresses=DEFAULT_DRESSES.map(d=>normalizeDress(d.id,d));
-let dresses=allDresses.filter(d=>!d.isDraft);
-let rentals=DEFAULT_RENTALS.map(r=>normalizeRental(r.id,r));
+let allDresses=[];
+let dresses=[];
+let rentals=[];
 let curTab="catalog",calY=new Date().getFullYear(),calM=new Date().getMonth(),calSel=null;
 let renFil="all",editDress=null,editRental=null,detPhIdx=0,formPhotos=[],formStatus="booked";
 let clStatFil="all",dismissedN=new Set();
-let appReady=false,dressDraftId=null,dressDraftTouched=false,dressAutosaveTimer=null,dressSaveSeq=0;
+let appReady=false,dressDraftId=null,dressDraftTouched=false,dressAutosaveTimer=null,dressSaveSeq=0,initialDataSource="server";
+
+function setBootState(state,message){
+  const boot=document.getElementById("appBoot");
+  const bootText=document.getElementById("appBootText");
+  if(bootText&&message)bootText.textContent=message;
+  if(boot)boot.classList.toggle("hidden",state==="ready");
+}
 
 // ═══════════════════════════════════════════
 // 🔥 FIREBASE: Функции сохранения / удаления
@@ -145,7 +152,8 @@ async function ensureSeedData(){
 function watchFirestore(ref,handler,label){
   return new Promise((resolve,reject)=>{
     let first=true;
-    const unsub=ref.onSnapshot(snap=>{
+    const unsub=ref.onSnapshot({includeMetadataChanges:true},snap=>{
+      if(first&&initialDataSource==="server"&&snap.metadata.fromCache)return;
       handler(snap);
       if(first){first=false;resolve(unsub)}
     },e=>{
@@ -154,6 +162,34 @@ function watchFirestore(ref,handler,label){
       else showToast(`Ошибка синхронизации: ${label}`,"error");
     });
   });
+}
+function applyRemoteState(dSnap,rSnap,sDoc){
+  allDresses=dSnap.docs.map(doc=>normalizeDress(doc.id,doc.data()));
+  refreshVisibleDresses();
+  rentals=rSnap.docs.map(doc=>normalizeRental(doc.id,doc.data())).filter(r=>r.dressId);
+  customSizes=sanitizeSizeList(sDoc.exists&&sDoc.data()?.list?sDoc.data().list:DEF_SIZES);
+}
+async function loadInitialData(){
+  try{
+    const[dSnap,rSnap,sDoc]=await Promise.all([
+      db.collection('fp_dresses').get({source:"server"}),
+      db.collection('fp_rentals').get({source:"server"}),
+      db.collection('fp_settings').doc('sizes').get({source:"server"})
+    ]);
+    initialDataSource="server";
+    applyRemoteState(dSnap,rSnap,sDoc);
+    return"server";
+  }catch(e){
+    console.warn("Server preload failed, fallback to cache",e);
+    const[dSnap,rSnap,sDoc]=await Promise.all([
+      db.collection('fp_dresses').get(),
+      db.collection('fp_rentals').get(),
+      db.collection('fp_settings').doc('sizes').get()
+    ]);
+    initialDataSource="cache";
+    applyRemoteState(dSnap,rSnap,sDoc);
+    return"cache";
+  }
 }
 async function startRealtimeSync(){
   await Promise.all([
@@ -715,15 +751,19 @@ async function startApp(){
   console.log("⏳ Загрузка данных из Firebase...");
   try{
     await ensureSeedData();
-    await startRealtimeSync();
+    const source=await loadInitialData();
     initF();
     appReady=true;
     renderAll();
+    setBootState("ready");
+    startRealtimeSync().catch(e=>console.error("Realtime sync start error:",e));
+    if(source==="cache")showToast("Нет связи с сервером. Показаны локальные данные.","warn");
   }catch(e){
     console.error("❌ Firebase start error:",e);
     initF();
     appReady=true;
     renderAll();
+    setBootState("ready");
     showToast("Ошибка подключения к Firebase","error");
   }
   setTimeout(()=>{

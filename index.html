@@ -15,6 +15,14 @@
 </head>
 <body>
 
+<div class="app-boot" id="appBoot">
+  <div class="app-boot-card">
+    <div class="app-boot-spinner"></div>
+    <div class="app-boot-title">Синхронизация данных</div>
+    <div class="app-boot-text" id="appBootText">Загружаем актуальный каталог и прокаты...</div>
+  </div>
+</div>
+
 <header class="hdr"><div class="hdr-in">
   <div class="logo"><div class="logo-ico">⛸️</div><div><div class="logo-t">ФигураПрокат</div><div class="logo-s">Прокат костюмов</div></div></div>
   <nav class="nav">
@@ -69,7 +77,27 @@
 <div id="toastWrap"></div>
 
 <script>
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(e=>console.log('SW fail',e))}
+const isCapacitorApp=typeof window!=="undefined"&&typeof window.Capacitor!=="undefined";
+const canUseServiceWorker='serviceWorker' in navigator&&!isCapacitorApp&&location.hostname!=="localhost"&&location.protocol.startsWith("http");
+if(canUseServiceWorker){
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(refreshing)return;
+    refreshing=true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    const activateUpdate=worker=>worker&&worker.postMessage({type:'SKIP_WAITING'});
+    if(reg.waiting)activateUpdate(reg.waiting);
+    reg.addEventListener('updatefound',()=>{
+      const nextWorker=reg.installing;
+      if(!nextWorker)return;
+      nextWorker.addEventListener('statechange',()=>{
+        if(nextWorker.state==='installed'&&navigator.serviceWorker.controller)activateUpdate(nextWorker);
+      });
+    });
+  }).catch(e=>console.log('SW fail',e));
+}
 </script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
