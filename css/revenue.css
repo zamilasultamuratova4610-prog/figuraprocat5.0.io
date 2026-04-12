@@ -1,0 +1,214 @@
+/* ============================================================
+   revenue.css — Стили для вкладки «Выручка за период»
+   ============================================================ */
+
+/* Обёртка вкладки */
+.rev-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+/* Заголовок */
+.rev-header {
+  margin-bottom: 24px;
+}
+.rev-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+.rev-subtitle {
+  font-size: 13px;
+  color: var(--g500, #6b7280);
+  margin: 0;
+}
+
+/* Форма выбора периода */
+.rev-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--card, #fff);
+  border: 1px solid var(--bord, #e5e7eb);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+}
+.rev-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rev-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--g500, #6b7280);
+}
+.rev-inp {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--bord, #e5e7eb);
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--bg, #f9fafb);
+  color: inherit;
+  min-width: 150px;
+  cursor: pointer;
+}
+.rev-inp:focus {
+  outline: none;
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 3px rgba(14,165,233,.15);
+}
+.rev-btn {
+  height: 40px;
+  padding: 0 22px;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity .15s;
+}
+.rev-btn:hover { opacity: .88; }
+.rev-btn:active { opacity: .75; }
+
+/* Быстрые диапазоны */
+.rev-quick {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.rev-quick-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--bord, #e5e7eb);
+  border-radius: 20px;
+  background: var(--card, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  color: inherit;
+}
+.rev-quick-btn:hover {
+  background: #0ea5e9;
+  border-color: #0ea5e9;
+  color: #fff;
+}
+
+/* Итоговые карточки */
+.rev-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.rev-card {
+  background: var(--card, #fff);
+  border: 1px solid var(--bord, #e5e7eb);
+  border-radius: 14px;
+  padding: 18px 20px;
+  text-align: center;
+}
+.rev-card-accent {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  border-color: transparent;
+  color: #fff;
+}
+.rev-cv {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.rev-cl {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  opacity: .75;
+}
+
+/* Секции с таблицами */
+.rev-section {
+  margin-bottom: 28px;
+}
+.rev-section-title {
+  font-size: 15px;
+  font-weight: 800;
+  margin: 0 0 12px;
+}
+.rev-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid var(--bord, #e5e7eb);
+}
+.rev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--card, #fff);
+}
+.rev-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--g500, #6b7280);
+  border-bottom: 1px solid var(--bord, #e5e7eb);
+  background: var(--bg, #f9fafb);
+}
+.rev-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bord, #e5e7eb);
+  vertical-align: middle;
+}
+.rev-table tr:last-child td { border-bottom: none; }
+.rev-table tbody tr:hover { background: var(--bg, #f9fafb); }
+
+/* Итоговая строка таблицы */
+.rev-tfoot td {
+  background: var(--bg, #f9fafb);
+  font-size: 13px;
+  border-top: 2px solid var(--bord, #e5e7eb);
+}
+
+/* Сообщения */
+.rev-msg {
+  text-align: center;
+  padding: 24px;
+  color: var(--g500, #6b7280);
+  font-size: 14px;
+}
+.rev-msg-warn {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+/* Мобильная адаптация — скрываем «Телефон» и «Период» на маленьких экранах */
+@media (max-width: 600px) {
+  .rev-table-detail th:nth-child(4),
+  .rev-table-detail td:nth-child(4),
+  .rev-table-detail th:nth-child(1),
+  .rev-table-detail td:nth-child(1) {
+    display: none;
+  }
+  .rev-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .rev-btn {
+    width: 100%;
+  }
+}
